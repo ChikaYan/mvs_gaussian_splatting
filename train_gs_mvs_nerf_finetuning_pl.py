@@ -397,7 +397,6 @@ class MVSSystem(LightningModule):
         keys = ['val_psnr_all']
         log = init_log({}, keys)
         with torch.no_grad():
-
             rgbs, depth_preds = [],[]
             # for chunk_idx in range(N_rays_all//args.chunk + int(N_rays_all%args.chunk>0)):
 
@@ -445,8 +444,11 @@ class MVSSystem(LightningModule):
             # depth_preds.append(depth_pred.cpu())
             # print('rgbs_target shape,',rgbs.shape, img.shape)
             # print(rgbs.shape)
-            rgbs = torch.clamp(rgbs.reshape(H, W, 3),0,1).cpu()
-            img = img.reshape(H,W,3)
+            # rgbs = torch.clamp(rgbs.reshape(H, W, 3),0,1).cpu()
+            # img = img.reshape(H,W,3)
+
+            rgbs = torch.clamp(rgbs.permute([1,2,0]),0,1).cpu()
+            img = img.permute([1,2,0])
             #depth_r = torch.cat(depth_preds).reshape(H, W)
             img_err_abs = (rgbs - img).abs()
 
@@ -459,7 +461,10 @@ class MVSSystem(LightningModule):
             os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
 
             img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).numpy() #depth_r.permute(1,2,0)
-            imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
+            img_dir = Path(f'{self.savedir}/{self.args.expname}/val_rgb')
+            img_dir.mkdir(exist_ok=True, parents=True)
+            imageio.imwrite(str(img_dir / f"{self.global_step:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
+
             
 
         return log
