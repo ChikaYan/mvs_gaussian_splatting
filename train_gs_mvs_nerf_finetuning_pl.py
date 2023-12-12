@@ -15,6 +15,8 @@ import torchvision
 # pytorch-lightning
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer, loggers
+import yaml
+from pathlib import Path
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -33,6 +35,12 @@ class SL1Loss(nn.Module):
 class MVSSystem(LightningModule):
     def __init__(self, args):
         super(MVSSystem, self).__init__()
+
+        Path(f'{args.savedir}/{args.expname}/').mkdir(exist_ok=True, parents=True)
+
+        with Path(f'{args.savedir}/{args.expname}/args.yaml').open('w') as f:
+            yaml.dump(args, f)
+
         self.args = args
         self.args.feat_dim = 8+3*4 ##hanxue to edit
         self.args.dir_dim = 3
@@ -279,9 +287,9 @@ class MVSSystem(LightningModule):
             scales = scales,
             rotations = rotations,
             cov3D_precomp = None)
-        # if self.idx%500==0:
-        #     torchvision.utils.save_image(rendered_image, f'{self.savedir}/{self.args.expname}/train_{self.idx:05d}' + ".png")
-        #     torchvision.utils.save_image(rgbs_target, f'{self.savedir}/{self.args.expname}/traingt_{self.idx:05d}' + ".png")
+        if self.idx%500==0:
+            torchvision.utils.save_image(rendered_image, f'{self.savedir}/{self.args.expname}/train_{self.idx:05d}' + ".png")
+            torchvision.utils.save_image(rgbs_target, f'{self.savedir}/{self.args.expname}/traingt_{self.idx:05d}' + ".png")
         
         log, loss = {}, 0
 

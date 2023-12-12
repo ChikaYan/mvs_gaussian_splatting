@@ -153,3 +153,7 @@ configs/
 *.sh
 
 *.png
+
+dataset/
+
+ext/

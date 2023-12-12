@@ -6,7 +6,7 @@ def config_parser(cmd=None):
                         help='config file path')
     parser.add_argument("--expname", type=str,
                         help='experiment name')
-    parser.add_argument("--savedir", type=str,
+    parser.add_argument("--savedir", type=str, default='exp',
                         help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
