@@ -254,7 +254,7 @@ class DTU_ft_gs(Dataset):
         self.poses = np.stack(self.poses)
         if 'train' == self.split:
             self.all_rays = torch.stack(self.all_rays, 0)  # (len(self.meta['frames]),h*w, 8)
-            self.all_rgbs = torch.stack(self.all_rgbs, 0)  # (len(self.meta['frames]),h*w, 3)
+            self.all_rgbs = torch.stack(self.all_rgbs, 0)  # (len(self.meta['frames]),3,h,w)
             self.all_R = torch.stack(self.all_R,0)
             self.all_T = torch.stack(self.all_T,0)
             self.all_FovY = torch.stack(self.all_FovY,0)
@@ -264,7 +264,7 @@ class DTU_ft_gs(Dataset):
             # self.all_rgbs = torch.cat(self.all_rgbs, 0)  # (len(self.meta['frames])*h*w, 3)
         else:
             self.all_rays = torch.stack(self.all_rays, 0)  # (len(self.meta['frames]),h*w, 3)
-            self.all_rgbs = torch.stack(self.all_rgbs, 0)#.reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
+            self.all_rgbs = torch.stack(self.all_rgbs, 0)#.reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),3,h,w)
             self.all_depth = torch.stack(self.all_depth, 0).reshape(-1,*self.img_wh[::-1])  # (len(self.meta['frames]),h,w,3)
             self.all_R = torch.stack(self.all_R,0)
             self.all_T = torch.stack(self.all_T,0)

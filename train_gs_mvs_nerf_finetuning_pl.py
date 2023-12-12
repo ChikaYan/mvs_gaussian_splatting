@@ -17,7 +17,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer, loggers
 import yaml
 from pathlib import Path
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SL1Loss(nn.Module):
@@ -35,16 +34,14 @@ class SL1Loss(nn.Module):
 class MVSSystem(LightningModule):
     def __init__(self, args):
         super(MVSSystem, self).__init__()
-
-        Path(f'{args.savedir}/{args.expname}/').mkdir(exist_ok=True, parents=True)
-
-        with Path(f'{args.savedir}/{args.expname}/args.yaml').open('w') as f:
-            yaml.dump(args, f)
-
         self.args = args
         self.args.feat_dim = 8+3*4 ##hanxue to edit
         self.args.dir_dim = 3
         self.idx = 0
+        Path(f'{args.savedir}/{args.expname}/').mkdir(exist_ok=True, parents=True)
+
+        with Path(f'{args.savedir}/{args.expname}/args.yaml').open('w') as f:
+            yaml.dump(args, f)
         self.active_sh_degree = 0
         self.savedir = args.savedir
 
@@ -127,7 +124,7 @@ class MVSSystem(LightningModule):
 
     def decode_batch(self, batch):
         rays = batch['rays'].squeeze()  # (B, 8)
-        rgbs = batch['rgbs'].squeeze()  # (B, 3)
+        rgbs = batch['rgbs'].squeeze()  # (3,H,W)
         R = batch['R'].squeeze()
         T = batch['T'].squeeze()
         mask = batch['mask'].squeeze()
@@ -147,7 +144,7 @@ class MVSSystem(LightningModule):
 
 
     def configure_optimizers(self):
-        print('self.grad_vars',self.grad_vars)
+        print('type of self.grad_vars[0] is',type(self.grad_vars[0]))
         if args.multi_volume:
             self.optimizer = torch.optim.Adam(self.grad_vars, lr=self.args.lrate, betas=(0.9, 0.999))
         else:
@@ -286,20 +283,12 @@ class MVSSystem(LightningModule):
             opacities = opacity,
             scales = scales,
             rotations = rotations,
-            cov3D_precomp = None)
-        if self.idx%500==0:
+            cov3D_precomp = None) #[3,H,W]
+        if self.idx%1000==0:
             torchvision.utils.save_image(rendered_image, f'{self.savedir}/{self.args.expname}/train_{self.idx:05d}' + ".png")
             torchvision.utils.save_image(rgbs_target, f'{self.savedir}/{self.args.expname}/traingt_{self.idx:05d}' + ".png")
         
         log, loss = {}, 0
-
-        # Ll1 = l1_loss(image, gt_image)
-        # loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-        ##################  rendering #####################
-        # print(rendered_image.device,torch.max(rendered_image),torch.min(rendered_image),rgbs_target.device,\
-        #       torch.max(rgbs_target),torch.min(rgbs_target),torch.max(scales),torch.min(scales),rendered_image.shape, rgbs_target.shape)
-        # img_vis = torch.cat((rendered_image.reshape(H,W,3),rgbs_target.reshape(H,W,3)),dim=1).detach().cpu().numpy() #depth_r.permute(1,2,0)
-        # imageio.imwrite('test.png', (img_vis*255).astype('uint8'))
         # pdb.set_trace()
         if False:
             path = f'{self.savedir}/{self.args.expname}/point_cloud.ply'
@@ -334,19 +323,20 @@ class MVSSystem(LightningModule):
             ssim_loss = lambda_dssim * (1.0 - ssim(rendered_image, rgbs_target))
             loss += ssim_loss
 
-            
-            #point_rgb = self.train_dataset.init_pointclouds[:,3:].to(torch.device('cuda'))
-            #point_rbg_loss = l2_loss(shs[:,0,:],point_rgb)
-            #loss+=point_rbg_loss
-            #point_Ll1 = (1.0 - lambda_dssim)*l1_loss(shs[:,0,:], point_rgb)
-            #loss += point_Ll1
+            if self.args.withpointrgbloss:
+                point_rgb = self.train_dataset.init_pointclouds[:,3:].to(torch.device('cuda'))
+                point_rbg_loss = l2_loss(shs[:,0,:],point_rgb)
+                loss+=point_rbg_loss
+                point_Ll1 = (1.0 - lambda_dssim)*l1_loss(shs[:,0,:], point_rgb)
+                loss += point_Ll1
             with torch.no_grad():
                 self.log('train/loss', loss, prog_bar=True)
                 self.log('train/img_mse_loss', img_loss.item(), prog_bar=False)
                 self.log('train/PSNR', psnr.item(), prog_bar=True)
-                #self.log('train/Ll1', Ll1.item(), prog_bar=False)
-                #self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
-                #self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
+                self.log('train/Ll1', Ll1.item(), prog_bar=False)
+                if self.args.withpointrgbloss:
+                    self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
+                    self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
                 # self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
             if self.idx%50==0:
                 print('train/PSNR',psnr.item())
@@ -550,6 +540,7 @@ if __name__ == '__main__':
     torch.set_default_dtype(torch.float32)
     args = config_parser()
     os.makedirs(f'{args.savedir}',exist_ok=True)
+    print('saving check points at',f'{args.savedir}/{args.expname}')
     system = MVSSystem(args)
     checkpoint_callback = ModelCheckpoint(os.path.join(f'{args.savedir}/{args.expname}/ckpts/','{epoch:02d}'),
                                           monitor='val/PSNR',

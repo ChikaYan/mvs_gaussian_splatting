@@ -138,22 +138,3 @@ runs_fine_tuning/
 
 # vim ctags file
 tags
-
-
-slurm-*.out
-
-.idea/
-
-ckpts/
-
-exp/
-
-configs/
-
-*.sh
-
-*.png
-
-dataset/
-
-ext/

@@ -6,7 +6,7 @@ def config_parser(cmd=None):
                         help='config file path')
     parser.add_argument("--expname", type=str,
                         help='experiment name')
-    parser.add_argument("--savedir", type=str, default='exp',
+    parser.add_argument("--savedir", type=str,
                         help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
@@ -56,6 +56,8 @@ def config_parser(cmd=None):
     parser.add_argument("--feat_ds_lr", type=float, default=0.01,
                         help='model learning rate')
     parser.add_argument("--multi_volume", action='store_true',
+                        help='whether use multi_volume')
+    parser.add_argument("--withpointrgbloss", action='store_true',
                         help='whether use multi_volume')
     parser.add_argument('--decay_step', nargs='+', type=int, default=[5000, 8000, 9000],
                         help='scheduler decay step')
