@@ -1,1 +1,0 @@
-python train_gs_mvs_nerf_finetuning_pl.py --dataset_name dtu_ft_gs --datadir  /anfs/gfxdisp/hanxue_nerf_data/dtu_example/scan114 --savedir /anfs/gfxdisp/hanxue_nerf_data/mvsnerf_exp --expname single_volume-simgleimage-lr5e-4 --with_rgb_loss  --batch_size 1 --num_epochs 30000  --imgScale_test 1.0   --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 10 --net_type v3 --netchunk 100000
