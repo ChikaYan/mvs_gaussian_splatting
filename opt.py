@@ -59,6 +59,8 @@ def config_parser(cmd=None):
                         help='whether use multi_volume')
     parser.add_argument("--withpointrgbloss", action='store_true',
                         help='whether use multi_volume')
+    parser.add_argument("--increaseactivation_step",  type=int, default=300000,
+                        help='whether use multi_volume')
     parser.add_argument('--decay_step', nargs='+', type=int, default=[5000, 8000, 9000],
                         help='scheduler decay step')
     parser.add_argument('--decay_gamma', type=float, default=0.5,

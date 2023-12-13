@@ -15,7 +15,8 @@ import torchvision
 # pytorch-lightning
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer, loggers
-
+import yaml
+from pathlib import Path
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SL1Loss(nn.Module):
@@ -425,12 +426,8 @@ class MVSSystem(LightningModule):
                 rotations = rotations,
                 cov3D_precomp = None)
 
-            # rgbs.append(rgb.cpu())
-            # depth_preds.append(depth_pred.cpu())
-            # print('rgbs_target shape,',rgbs.shape, img.shape)
-            # print(rgbs.shape)
-            rgbs = torch.clamp(rgbs.reshape(H, W, 3),0,1).cpu()
-            img = img.reshape(H,W,3)
+            rgbs = torch.clamp(rgbs.permute([1,2,0]),0,1).cpu()
+            img = img.permute([1,2,0])
             #depth_r = torch.cat(depth_preds).reshape(H, W)
             img_err_abs = (rgbs - img).abs()
 
@@ -439,12 +436,14 @@ class MVSSystem(LightningModule):
             # self.logger.experiment.add_images('val/depth_gt_pred', depth_r[None], self.global_step)
 
             img_vis = torch.stack((img, rgbs, img_err_abs.cpu()*5)).permute(0,3,1,2)
-            self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.global_step)
-            os.makedirs(f'runs_fine_tuning/{self.args.expname}/{self.args.expname}/',exist_ok=True)
+            # self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.global_step)
+            os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
 
             img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).numpy() #depth_r.permute(1,2,0)
-            imageio.imwrite(f'runs_fine_tuning/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
-            
+            img_dir = Path(f'{self.savedir}/{self.args.expname}/val_rgb')
+            img_dir.mkdir(exist_ok=True, parents=True)
+            imageio.imwrite(str(img_dir / f"{self.global_step:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
+
 
         return log
 
