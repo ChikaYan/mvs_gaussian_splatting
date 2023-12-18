@@ -689,7 +689,7 @@ class GaussianModel:
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         selected_pts_mask[grads.shape[0]:] = True
         selected_pts_mask = torch.logical_and(selected_pts_mask,
-                                              torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
+                                            torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
         if self.learn_split_distance:
             stds = self.get_scaling[selected_pts_mask].repeat(int(N/2),1)
             splitdistance = self.get_split_distance[selected_pts_mask].repeat(int(N/2),1)
@@ -701,7 +701,7 @@ class GaussianModel:
             if self.modelcg.symmetric_split and N%2==0:
                 print("will use symmetric_split",self.get_scaling[selected_pts_mask].shape,self.get_scaling[selected_pts_mask].repeat(int(N/2),1).shape)
                 stds = self.get_scaling[selected_pts_mask].repeat(int(N/2),1)
-                means =torch.zeros((stds.size(0), 3),device="cuda")
+                means = torch.zeros((stds.size(0), 3),device="cuda")
                 samples = torch.normal(mean=means, std=stds)
                 samples = torch.cat((samples,-samples),dim=0)
             else:

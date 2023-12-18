@@ -141,35 +141,46 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
                     assert cameras_extent is not None
                     N=2
                     if learn_split_distance:
-                        stds = scales[selected_split_pts_mask].repeat(int(N/2),1)
-                        splitdistance = split_dist[selected_split_pts_mask].repeat(int(N/2),1)
+                        stds = scales[selected_split_pts_mask]
+                        splitdistance = split_dist[selected_split_pts_mask]
                         # if stds.size(0)>0:
                             # print('splitdistance',splitdistance.shape,torch.unique(splitdistance),torch.max(splitdistance),torch.min(splitdistance))
                         samples = stds*splitdistance
-                        samples = torch.cat((samples,-samples),dim=0)
+                        # samples = torch.cat((samples,-samples),dim=0)
                     else:
-                        stds = scales[selected_split_pts_mask].repeat(int(N/2),1)
+                        stds = scales[selected_split_pts_mask]
                         means = torch.zeros((stds.size(0), 3),device="cuda")
                         samples = torch.normal(mean=means, std=stds)
-                        samples = torch.cat((samples,-samples),dim=0) 
-                    rots = build_rotation(raw_rotation[selected_split_pts_mask]).repeat(N,1,1)
-                    new_split_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + means3D[selected_split_pts_mask].repeat(N, 1)
-                    assert N*num_point_to_split == new_split_xyz.size(0)
+                        # samples = torch.cat((samples,-samples),dim=0) 
+                    rots = build_rotation(raw_rotation[selected_split_pts_mask])#.repeat(N,1,1)
+                    new_split_xyz = torch.bmm(rots, -samples.unsqueeze(-1)).squeeze(-1) + means3D[selected_split_pts_mask]#.repeat(N, 1)
+                    assert num_point_to_split == new_split_xyz.size(0)
+                    delta_xyz = torch.zeros_like(means3D,device='cuda')
+                    delta_xyz[selected_split_pts_mask]  = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1)#[:num_point_to_split]
+
                     if learn_split_scale:
-                        splitscale = split_scale[selected_split_pts_mask].repeat(N,3)
-                        # if stds.size(0)>0:
-                            # print('splitscale',splitscale.shape,torch.unique(splitscale),torch.max(splitscale),torch.min(splitscale))
-                        new_split_scales = scales[selected_split_pts_mask].repeat(N,1) / (splitscale*N)
+                        splitscale = split_scale[selected_split_pts_mask].repeat(1,3)
+                        new_split_scales = scales[selected_split_pts_mask] / (splitscale*N)
+                        delta_scales = torch.ones_like(scales,device='cuda')
+                        delta_scales[selected_split_pts_mask] = splitscale*N
+                        scales = torch.cat((scales/delta_scales,new_split_scales),0)
                     else:
-                        new_split_scales = scales[selected_split_pts_mask].repeat(N,1) / (0.8*N)
-                    assert N*num_point_to_split == new_split_scales.size(0)
-                    prune_split_points = ~selected_split_pts_mask
-                    means3D = torch.cat((means3D[prune_split_points],new_split_xyz),0)
-                    shs = torch.cat((shs[prune_split_points],shs[selected_split_pts_mask].repeat(N,1,1)),0)
-                    opacity = torch.cat((opacity[prune_split_points],opacity[selected_split_pts_mask].repeat(N,1)),0)
-                    scales = torch.cat((scales[prune_split_points],new_split_scales),0)
-                    rotations = torch.cat((rotations[prune_split_points],rotations[selected_split_pts_mask].repeat(N,1)),0)
-                    means2D = torch.cat((means2D[prune_split_points],means2D[selected_split_pts_mask].repeat(N,1)),0)
+                        # new_split_scales = scales[selected_split_pts_mask].repeat(N,1) / (0.8*N)
+
+                        new_split_scales = scales[selected_split_pts_mask] / (0.8*N)
+                        delta_scales = torch.ones_like(scales,device='cuda')
+                        delta_scales[selected_split_pts_mask] = 0.8*N*delta_scales[selected_split_pts_mask]
+                        # print(delta_scales)
+                        # scales[selected_pts_mask] = scales[selected_pts_mask]/(0.8*N)
+                        scales = torch.cat((scales/delta_scales,new_split_scales),0)
+                    assert num_point_to_split == new_split_scales.size(0)
+                    # prune_split_points = ~selected_split_pts_mask
+                    means3D = torch.cat((means3D+delta_xyz,new_split_xyz),0)
+                    shs = torch.cat((shs,shs[selected_split_pts_mask]),0)
+                    opacity = torch.cat((opacity,opacity[selected_split_pts_mask]),0)
+                    scales = torch.cat((scales,new_split_scales),0)
+                    rotations = torch.cat((rotations,rotations[selected_split_pts_mask]),0)
+                    means2D = torch.cat((means2D,means2D[selected_split_pts_mask]),0)
                     assert means3D.size(0)-n_points==(N-1)*num_point_to_split
                     assert scales.size(0) == means3D.size(0)
         elif learn_split_distance or learn_split_scale:
@@ -219,7 +230,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
                         # print('splitscale',splitscale.shape,torch.unique(splitscale),torch.max(splitscale),torch.min(splitscale))
                     new_split_scales = scales[selected_pts_mask] / (split_scale[selected_pts_mask]*N)
                     delta_scales = torch.ones_like(scales,device='cuda')
-                    delta_scales[selected_pts_mask] = split_scale[selected_pts_mask]*N
+                    delta_scales[selected_pts_mask] = split_scale[selected_pts_mask].repeat(1,3)*N
                     # print(delta_scales)
                     # scales[selected_pts_mask] = scales[selected_pts_mask]/(split_scale[selected_pts_mask]*N)
                     scales = torch.cat((scales/delta_scales,new_split_scales),0)
