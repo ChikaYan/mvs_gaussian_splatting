@@ -167,7 +167,7 @@ class DTU_ft_gs(Dataset):
         self.all_FovY = []
         self.all_mask = []
 
-        for idx in self.img_idx[:1]:
+        for idx in self.img_idx:
             proj_mat_filename = os.path.join(self.root_dir, f'Cameras/train/{idx:08d}_cam.txt')
             intrinsic, w2c, near_far = self.read_cam_file(proj_mat_filename)
             c2w = np.linalg.inv(w2c)
