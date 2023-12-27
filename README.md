@@ -12,7 +12,7 @@ geometric and neural radiance fields for view synthesis, Moreover, if dense imag
 Install environment:
 ```
 conda create -n mvsnerf python=3.8
-conda activate mvsnerf
+conda activate mvsnerf1
 pip install torch==1.10.1+cu113 torchvision==0.11.2+cu113 torchaudio==0.10.1+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
 pip install pytorch-lightning==1.3.5 imageio pillow scikit-image opencv-python configargparse lpips kornia warmup_scheduler matplotlib test-tube imageio-ffmpeg
 ```

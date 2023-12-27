@@ -556,7 +556,7 @@ class Renderer_linear(nn.Module):
 
 
 class Renderer_gs(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, input_ch_feat=8, skips=[4], use_viewdirs=False,output_dim = None):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, input_ch_feat=8, skips=[4], use_viewdirs=False,output_dim = None,scale=False):
         """
         """
         super(Renderer_gs, self).__init__()
@@ -568,6 +568,7 @@ class Renderer_gs(nn.Module):
         self.use_viewdirs = use_viewdirs
         self.in_ch_pts, self.in_ch_views, self.in_ch_feat = input_ch, input_ch_views, input_ch_feat
         self.output_dim = output_dim
+        self.scale = scale
 
         self.pts_linears = nn.ModuleList(
             [nn.Linear(self.in_ch_pts, W, bias=True)] + [nn.Linear(W, W, bias=True) if i not in self.skips else nn.Linear(W + self.in_ch_pts, W) for i in range(D-1)])
@@ -663,12 +664,12 @@ class Renderer_gs(nn.Module):
                 feature_ds = self.feat_ds_linear(h)
                 features_rest = self.feat_rest_linear(h)
                 return torch.cat([feature_ds,features_rest],-1)
+            elif self.output_dim == 3 or (self.output_dim==1 and self.scale):
+                scales = self.scaling_activation(self.output_liners[-1](h))*0.05
+                return scales
             elif self.output_dim==1:
                 opacity = self.opacity_activation(self.output_liners[-1](h))
                 return opacity
-            elif self.output_dim == 3:
-                scales = self.scaling_activation(self.output_liners[-1](h))*0.05
-                return scales
             elif self.output_dim == 4:
                 rotation = self.rotation_activation(self.output_liners[-1](h))
                 return rotation
@@ -696,7 +697,7 @@ class Renderer_gs(nn.Module):
         # return outputs
 
 class MVSNeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch_pts=3, input_ch_views=3, input_ch_feat=8, skips=[4], net_type='v2', output_dim = None):
+    def __init__(self, D=8, W=256, input_ch_pts=3, input_ch_views=3, input_ch_feat=8, skips=[4], net_type='v2', output_dim = None,scale = False):
         """
         """
         super(MVSNeRF, self).__init__()
@@ -719,7 +720,7 @@ class MVSNeRF(nn.Module):
         elif 'v3' == net_type:
             self.nerf = Renderer_gs(D=D, W=W,input_ch_feat=input_ch_feat,
                      input_ch=input_ch_pts, output_ch=4, skips=skips,
-                     input_ch_views=input_ch_views, use_viewdirs=True, output_dim = output_dim) 
+                     input_ch_views=input_ch_views, use_viewdirs=True, output_dim = output_dim,scale = scale) 
 
     def forward_alpha(self, x):
         if self.net_type=='v3':
@@ -750,11 +751,19 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
     skips = [4]
     if args.multi_volume:
         model = []
-        output_dims = [1,3,4,48]
+        if args.singlescale:
+            output_dims = [1,1,4,48]
+        else:
+            output_dims = [1,3,4,48]
         for i in range(4):
-            model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
-                    input_ch_pts=input_ch, skips=skips,
-                    input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i]).to(device))
+            if i==1:
+                model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
+                        input_ch_pts=input_ch, skips=skips,
+                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i],scale=True).to(device))
+            else:
+                model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
+                        input_ch_pts=input_ch, skips=skips,
+                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i]).to(device))
     else:
         model = MVSNeRF(D=args.netdepth, W=args.netwidth,
                     input_ch_pts=input_ch, skips=skips,
@@ -791,9 +800,15 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
 
     EncodingNet = None
     if use_mvs:
-        EncodingNet = MVSNet().to(device)
-        if args.dataset_name!='dtu_ft_gs':
-            grad_vars += list(EncodingNet.parameters())    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        if args.multi_volume and args.dataset_name=='dtu_gs':
+            EncodingNet=[]
+            for i in range(len(model)):
+                EncodingNet.append(MVSNet().to(device))
+                # grad_vars += list(EncodingNet[i].parameters()) #hanxue
+        else:
+            EncodingNet = MVSNet().to(device)
+            if args.dataset_name!='dtu_ft_gs':
+                grad_vars += list(EncodingNet.parameters())    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     start = 0
 
@@ -814,7 +829,12 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
         # Load model
         if use_mvs:
             state_dict = ckpt['network_mvs_state_dict']
-            EncodingNet.load_state_dict(state_dict)
+            if args.multi_volume and isinstance(EncodingNet,list):
+                print('EncodingNet will have duplicates', args.multi_volume, args.dataset_name)
+                for i in range(len(EncodingNet)):
+                    EncodingNet[i].load_state_dict(state_dict)
+            else:
+                EncodingNet.load_state_dict(state_dict)
         if args.multi_volume:
             for i in range(len(model)):
                 model[i].load_state_dict(ckpt['network_fn_state_dict'],strict=False)

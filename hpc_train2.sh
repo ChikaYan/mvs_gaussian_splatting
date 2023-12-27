@@ -18,7 +18,7 @@ module load cudnn/8.9_cuda-11.8
 module unload gcc-5.4.0-gcc-4.8.5-fis24gg
 module load gcc-7.2.0-gcc-4.8.5-pqn7o2k
 source /usr/local/software/archive/linux-scientific7-x86_64/gcc-9/miniconda3-4.7.12.1-rmuek6r3f6p3v6fdj7o2klyzta3qhslh/etc/profile.d/conda.sh
-conda activate mvsnerf
+conda activate mvsnerf1
 #! module purge
 #! module load rhel8/default-amp
 #! module load cuda/11.1 cudnn/8.0_cuda-11.1

@@ -397,7 +397,34 @@ def index_point_feature(volume_feature, ray_coordinate_ref, chunk=-1):
             features = F.grid_sample(volume_feature, grid, align_corners=True, mode='bilinear')[:,:,0].permute(2,3,0,1).squeeze()#, padding_mode="border"
         return features
 
+def index_point_feature_gs(volume_feature, ray_coordinate_ref, chunk=-1):
+    ''''
+    Args:
+        volume_color_feature: [B, G, D, h, w]
+        volume_density_feature: [B C D H W]
+        ray_dir_world:[3 ray_samples N_samples]
+        ray_coordinate_ref:  [N 3]
+        ray_dir_ref:  [3 N_rays]
+        depth_candidates: [N_rays, N_samples]
+    Returns:
+        [N_rays, N_samples]
+    '''
 
+    device = volume_feature.device
+    # H, W = ray_coordinate_ref.shape[-3:-1]
+    num_samples = ray_coordinate_ref.shape[0]
+
+    if chunk != -1:
+        print('H,W',H,W)
+        features = torch.zeros((volume_feature.shape[1],1,num_samples), device=volume_feature.device, dtype=torch.float, requires_grad=volume_feature.requires_grad)
+        grid = ray_coordinate_ref.view(1, 1, 1, num_samples, 3) * 2 - 1.0  # [1 1 H W 3] (x,y,z)
+        for i in range(0, num_samples, chunk):
+            features[:,i:i + chunk] = F.grid_sample(volume_feature, grid[:,:,:,i:i + chunk], align_corners=True, mode='bilinear')[0]
+        features = features.permute(1,2,0)
+    else:
+        grid = ray_coordinate_ref.view(-1, 1, 1, num_samples, 3).to(device) * 2 - 1.0  # [1 1 H W 3] (x,y,z)
+        features = F.grid_sample(volume_feature, grid, align_corners=True, mode='bilinear')[:,:,0].permute(2,3,0,1).squeeze()#, padding_mode="border"
+    return features
 
 
 
