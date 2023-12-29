@@ -140,6 +140,7 @@ class DTU_gs(Dataset):
             cam2worlds += [np.linalg.inv(extrinsic)]
         # print(proj_mats)
         # print(intrinsics)
+        # import pdb; pdb.set_trace()
         self.proj_mats, self.intrinsics = np.stack(proj_mats), np.stack(intrinsics)
         self.world2cams, self.cam2worlds = np.stack(world2cams), np.stack(cam2worlds)
 

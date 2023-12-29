@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from torch import nn
 from utils import normal_vect, index_point_feature, build_color_volume,index_point_feature_gs
 
 def depth2dist(z_vals, cos_angle):
@@ -195,7 +196,7 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
     #     angle = gen_dir_feature(pose_ref['w2cs'][0], rays_dir/cos_angle.unsqueeze(-1))  # view dir feature
     # else:
     #     angle = rays_dir/cos_angle.unsqueeze(-1)
-    if isinstance(volume_feature, list) and isinstance(network_fn, list):
+    if isinstance(volume_feature, list) and isinstance(network_fn, nn.ModuleList):
         # print('during rendering we use multi_volume')
         assert len(volume_feature)==len(network_fn)
         raws = []

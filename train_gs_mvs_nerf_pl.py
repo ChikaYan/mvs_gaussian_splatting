@@ -17,7 +17,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer, loggers
 import yaml
 from pathlib import Path
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SL1Loss(nn.Module):
     def __init__(self, levels=3):
@@ -60,6 +60,8 @@ class MVSSystem(LightningModule):
         self.train_dataset = dataset(args, split='train', max_len=-1)# , downSample=args.imgScale_train)
         self.val_dataset   = dataset(args, split='test', max_len=10)# , downSample=args.imgScale_test)#
 
+        self.model_register = self.render_kwargs_train['network_fn']
+        self.MVSNet_register_fine = self.render_kwargs_train['network_fine']
         # pc_path = os.path.join(self.train_dataset.root_dir,f'Pointclouds50/scan114_pointclouds.npy')
         # init_pointclouds = np.load(pc_path)
         # self.init_pointclouds = torch.tensor(init_pointclouds).float()
@@ -231,10 +233,10 @@ class MVSSystem(LightningModule):
         pair_idx = batch['src_views']
         scan = scan[0]
         # print('during train step, scan, light_idx, pair_idx',scan, light_idx, pair_idx)
-        src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=device)
+        src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=self.device)
         H,W = src_imgs.shape[-2:]
         # print('during train step,',H,W)
-        if self.args.multi_volume and isinstance(self.MVSNet, list):
+        if self.args.multi_volume:
             volume_feature = []
             for i in range(len(self.MVSNet)):
                 # self.MVSNet[i].eval() #hanxue
@@ -244,8 +246,8 @@ class MVSSystem(LightningModule):
             volume_feature, _, _ = self.MVSNet(src_imgs, proj_mats, near_far_source, pad=self.args.pad, lindisp=self.args.use_disp)
             
 
-        world_view_transform = self.getWorld2View2(R, T).transpose(0, 1).cuda()#torch.tensor(self.getWorld2View2(R, T)).transpose(0, 1).cuda()
-        projection_matrix = self.getProjectionMatrix(znear=znear, zfar=zfar, fovX=FovX, fovY=FovY).transpose(0,1).cuda()
+        world_view_transform = self.getWorld2View2(R, T).transpose(0, 1).to(self.device)
+        projection_matrix = self.getProjectionMatrix(znear=znear, zfar=zfar, fovX=FovX, fovY=FovY).transpose(0,1).to(self.device)
         full_proj_transform = (world_view_transform.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))).squeeze(0)
         camera_center = world_view_transform.inverse()[3, :3]
 
@@ -253,7 +255,7 @@ class MVSSystem(LightningModule):
         tanfovx = math.tan(FovX * 0.5)
         tanfovy = math.tan(FovY * 0.5)
         bg_color = [0, 0, 0]
-        bg_color = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        bg_color = torch.tensor(bg_color, dtype=torch.float32, device=self.device)
         raster_settings = GaussianRasterizationSettings(
             image_height=int(H),
             image_width=int(W),
@@ -282,12 +284,12 @@ class MVSSystem(LightningModule):
         init_pointclouds = np.load(pc_path)
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
-        xyz_coarse_sampled = init_pointclouds[:,:3].to(torch.device('cuda'))
+        xyz_coarse_sampled = init_pointclouds[:,:3].to(self.device)
 
         
         # Converting world coordinate to ndc coordinate
         
-        inv_scale = torch.tensor([W - 1, H - 1]).to(device)
+        inv_scale = torch.tensor([W - 1, H - 1]).to(self.device)
         w2c_ref, intrinsic_ref = pose_source['w2cs'][0], pose_source['intrinsics'][0]
         xyz_NDC = get_ndc_coordinate(w2c_ref, intrinsic_ref, xyz_coarse_sampled, inv_scale, \
                                      near=near_far_source[0],far=near_far_source[1], pad=args.pad, lindisp=args.use_disp)
@@ -305,10 +307,10 @@ class MVSSystem(LightningModule):
 
         if args.singlescale:
             scales = scales.repeat(1,3)
-            rotations = torch.zeros_like(rotations,device='cuda')
+            rotations = torch.zeros_like(rotations,device=self.device)
             rotations[:,0]=1
         means3D = xyz_coarse_sampled
-        means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device="cuda") + 0
+        means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device=self.device) + 0
         
         rendered_image, radii = rasterizer(
             means3D = means3D,
@@ -325,7 +327,7 @@ class MVSSystem(LightningModule):
         
         log, loss = {}, 0
         # pdb.set_trace()
-        mask = torch.tensor(mask,device='cuda').reshape(-1)
+        mask = torch.tensor(mask,device=self.device).reshape(-1)
         # print('rgbs_target shape,',rgbs_target.shape, rendered_image.shape)
         lambda_dssim=0.2
         if self.args.with_rgb_loss:
@@ -340,7 +342,7 @@ class MVSSystem(LightningModule):
             loss += ssim_loss
 
             if self.args.withpointrgbloss:
-                point_rgb = init_pointclouds[:,3:].to(torch.device('cuda'))
+                point_rgb = init_pointclouds[:,3:].to(self.device)
                 point_rbg_loss = l2_loss(shs[:,0,:],point_rgb)
                 loss+=point_rbg_loss
                 point_Ll1 = (1.0 - lambda_dssim)*l1_loss(shs[:,0,:], point_rgb)
@@ -373,7 +375,10 @@ class MVSSystem(LightningModule):
 
 
     def validation_step(self, batch, batch_nb):
-        if isinstance(self.MVSNet,list):
+        # if self.global_rank == 0:
+        #     import pdb; pdb.set_trace()
+
+        if isinstance(self.MVSNet,list) or isinstance(self.MVSNet,nn.ModuleList):
             for i in range(len(self.MVSNet)):
                 self.MVSNet[i].train()
         else:
@@ -386,8 +391,8 @@ class MVSSystem(LightningModule):
         scan = scan[0]
         # print('during train step, scan, light_idx, pair_idx',scan, light_idx, pair_idx)
 
-        src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=device)
-        if self.args.multi_volume and isinstance(self.MVSNet, list):
+        src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=self.device)
+        if self.args.multi_volume:
             volume_feature = []
             for i in range(len(self.MVSNet)):
                 volume_feature_, _, _ = self.MVSNet[i](src_imgs, proj_mats, near_far_source, pad=self.args.pad, lindisp=self.args.use_disp)
@@ -399,8 +404,8 @@ class MVSSystem(LightningModule):
         znear = 0.01
         img = img.cpu()  # (3, H, W)
         H,W = img.shape[-2:]
-        world_view_transform = self.getWorld2View2(R, T).transpose(0, 1).cuda()#torch.tensor(self.getWorld2View2(R, T)).transpose(0, 1).cuda()
-        projection_matrix = self.getProjectionMatrix(znear=znear, zfar=zfar, fovX=FovX, fovY=FovY).transpose(0,1).cuda()
+        world_view_transform = self.getWorld2View2(R, T).transpose(0, 1).to(self.device)#torch.tensor(self.getWorld2View2(R, T)).transpose(0, 1).to(self.device)
+        projection_matrix = self.getProjectionMatrix(znear=znear, zfar=zfar, fovX=FovX, fovY=FovY).transpose(0,1).to(self.device)
         full_proj_transform = (world_view_transform.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))).squeeze(0)
         camera_center = world_view_transform.inverse()[3, :3]
 
@@ -408,7 +413,7 @@ class MVSSystem(LightningModule):
         tanfovx = math.tan(FovX * 0.5)
         tanfovy = math.tan(FovY * 0.5)
         bg_color = [0, 0, 0]
-        bg_color = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        bg_color = torch.tensor(bg_color, dtype=torch.float32, device=self.device)
         raster_settings = GaussianRasterizationSettings(
             image_height=int(H),
             image_width=int(W),
@@ -430,7 +435,7 @@ class MVSSystem(LightningModule):
         init_pointclouds = np.load(pc_path)
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
-        xyz_coarse_sampled = init_pointclouds[:,:3].to(torch.device('cuda'))
+        xyz_coarse_sampled = init_pointclouds[:,:3].to(self.device)
         N_rays_all = rays.shape[0]
         # print(xyz_coarse_sampled.dtype,R.dtype,T.dtype,rays.dtype) float32
         ##################  rendering #####################
@@ -447,10 +452,10 @@ class MVSSystem(LightningModule):
             opacity,scales,rotations,shs = rendering_gs(args, pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
                                                         volume_feature, src_imgs,  **self.render_kwargs_train)
             means3D = xyz_coarse_sampled
-            means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device="cuda") + 0
+            means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device=self.device) + 0
             if args.singlescale:
                 scales = scales.repeat(1,3)
-                rotations = torch.zeros_like(rotations,device='cuda')
+                rotations = torch.zeros_like(rotations,device=self.device)
                 rotations[:,0]=1
                 # print('scales,rotations',scales.shape,rotations.shape)
             rgbs, radii = rasterizer(
@@ -563,6 +568,8 @@ if __name__ == '__main__':
     os.makedirs(f'{args.savedir}',exist_ok=True)
     print('saving check points at',f'{args.savedir}/{args.expname}')
     system = MVSSystem(args)
+    print(system)
+    # import pdb;pdb.set_trace()
     checkpoint_callback = ModelCheckpoint(os.path.join(f'{args.savedir}/{args.expname}/ckpts/','{epoch:02d}'),
                                           monitor='val/PSNR',
                                           mode='max',
@@ -574,21 +581,25 @@ if __name__ == '__main__':
         debug=False,
         create_git_tag=False
     )
+    
 
-    args.num_gpus, args.use_amp = 1, False
+    # args.num_gpus, args.use_amp = 1, False
+    args.num_gpus, args.use_amp = -1, False
     trainer = Trainer(max_epochs=args.num_epochs,
                       checkpoint_callback=checkpoint_callback,
                       logger=logger,
                       weights_summary=None,
                       progress_bar_refresh_rate=1,
                       gpus=args.num_gpus,
-                      distributed_backend='ddp' if args.num_gpus > 1 else None,
+                      distributed_backend='ddp' if args.num_gpus != 1 else None,
                       num_sanity_val_steps=1, #if args.num_gpus > 1 else 5,
                       check_val_every_n_epoch = max(system.args.num_epochs//system.args.N_vis,1),
                     #   val_check_interval=int(max(system.args.num_epochs//system.args.N_vis,1)),
                       benchmark=True,
                       precision=16 if args.use_amp else 32,
-                      amp_level='O1')
+                      amp_level='O1',
+                    #   accelerator='ddp' if args.num_gpus != 1 else None,
+                      )
 
     trainer.fit(system)
     system.save_ckpt()
