@@ -17,6 +17,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer, loggers
 import yaml
 from pathlib import Path
+import trimesh
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SL1Loss(nn.Module):
@@ -302,8 +303,9 @@ class MVSSystem(LightningModule):
                                          near=self.near_far_source[0], far=self.near_far_source[1], pad=args.pad, lindisp=args.use_disp)
 
 
-        opacity,scales,rotations,shs = rendering_gs(args, pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
+        opacity,scales,rotations,feature_ds, feature_rest = rendering_gs(args, pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
                                                        volume_feature, src_imgs,  **self.render_kwargs_train)
+        shs = torch.concat([feature_ds, feature_rest], dim=1)
 
         if args.singlescale:
             scales = scales.repeat(1,3)
@@ -347,29 +349,40 @@ class MVSSystem(LightningModule):
                 loss+=point_rbg_loss
                 point_Ll1 = (1.0 - lambda_dssim)*l1_loss(shs[:,0,:], point_rgb)
                 loss += point_Ll1
-            with torch.no_grad():
-                self.log('train/loss', loss, prog_bar=True)
-                self.log('train/img_mse_loss', img_loss.item(), prog_bar=False)
-                self.log('train/PSNR', psnr.item(), prog_bar=True)
-                self.log('train/Ll1', Ll1.item(), prog_bar=False)
-                if self.args.withpointrgbloss:
-                    self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
-                    self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
-                # self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
-            if self.global_step%len(self.train_dataloader())==0:
-                print('train/PSNR',psnr.item())
-            if self.global_step%10000==0:
-                rgbs = torch.clamp(rendered_image.permute([1,2,0]),0,1)#.cpu()
-                img = rgbs_target.permute([1,2,0])#.cpu()
-                #depth_r = torch.cat(depth_preds).reshape(H, W)
-                img_err_abs = (rgbs - img).abs()
-                img_vis = torch.stack((img, rgbs, img_err_abs*5)).permute(0,3,1,2)
-                os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
-                # print(img.device,type(img),rgbs.device,type(rgbs),img_err_abs.device,type(img_err_abs))
-                img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).detach().cpu().numpy() #depth_r.permute(1,2,0)
-                img_dir = Path(f'{self.savedir}/{self.args.expname}/train_rgb')
-                img_dir.mkdir(exist_ok=True, parents=True)
-                imageio.imwrite(str(img_dir / f"{self.global_step:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
+
+            # logging
+            if self.global_rank == 0:
+                with torch.no_grad():
+                    self.log('train/loss', loss, prog_bar=True)
+                    self.log('train/img_mse_loss', img_loss.item(), prog_bar=False)
+                    self.log('train/PSNR', psnr.item(), prog_bar=True)
+                    self.log('train/Ll1', Ll1.item(), prog_bar=False)
+                    if self.args.withpointrgbloss:
+                        self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
+                        self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
+                    # self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
+                if self.global_step%len(self.train_dataloader())==0:
+                    print('train/PSNR',psnr.item())
+                if self.global_step%10000==0:
+                    rgbs = torch.clamp(rendered_image.permute([1,2,0]),0,1)#.cpu()
+                    img = rgbs_target.permute([1,2,0])#.cpu()
+                    #depth_r = torch.cat(depth_preds).reshape(H, W)
+                    img_err_abs = (rgbs - img).abs()
+                    img_vis = torch.stack((img, rgbs, img_err_abs*5)).permute(0,3,1,2)
+                    os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
+                    # print(img.device,type(img),rgbs.device,type(rgbs),img_err_abs.device,type(img_err_abs))
+                    img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).detach().cpu().numpy() #depth_r.permute(1,2,0)
+                    img_dir = Path(f'{self.savedir}/{self.args.expname}/train_rgb')
+                    img_dir.mkdir(exist_ok=True, parents=True)
+                    imageio.imwrite(str(img_dir / f"{self.global_step:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
+
+
+                    ### save gs as ply
+                    # pts = trimesh.points.PointCloud(means3D.cpu().numpy())
+                    # pts.export(str(img_dir/f"{self.global_step:08d}_{batch['idx'].item():02d}.ply"))
+                if self.global_step % self.args.save_gs_ply_every == 0:
+                    gs_save_ply(means3D,feature_ds,feature_rest,opacity,scales,rotations, f"{self.savedir}/{self.args.expname}/train_ply/{self.global_step:08d}_{batch['idx'].item():02d}.ply")
+
 
         return  {'loss':loss}
 
@@ -449,8 +462,11 @@ class MVSSystem(LightningModule):
             xyz_NDC = get_ndc_coordinate(w2c_ref, intrinsic_ref, xyz_coarse_sampled, inv_scale,
                                             near=near_far_source[0], far=near_far_source[1], pad=args.pad*args.imgScale_test, lindisp=args.use_disp)
 
-            opacity,scales,rotations,shs = rendering_gs(args, pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
+
+            opacity,scales,rotations,feature_ds, feature_rest = rendering_gs(args, pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
                                                         volume_feature, src_imgs,  **self.render_kwargs_train)
+            shs = torch.concat([feature_ds, feature_rest], dim=1)
+
             means3D = xyz_coarse_sampled
             means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device=self.device) + 0
             if args.singlescale:
