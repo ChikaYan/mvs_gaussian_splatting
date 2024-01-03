@@ -53,6 +53,7 @@ class Embedder:
         repeat = inputs.dim()-1
         # print('repeat',repeat,inputs.unsqueeze(-2).shape,self.freq_bands.shape,inputs.shape)\
         # repeat 2 torch.Size([1024, 128, 1, 3]) torch.Size([1, 10, 1]) torch.Size([1024, 128, 3])
+        self.freq_bands = self.freq_bands.type_as(inputs)
         inputs_scaled = (inputs.unsqueeze(-2) * self.freq_bands.view(*[1]*repeat,-1,1)).reshape(*inputs.shape[:-1],-1)
         inputs_scaled = torch.cat((inputs, torch.sin(inputs_scaled), torch.cos(inputs_scaled)),dim=-1)
         return inputs_scaled
@@ -763,11 +764,11 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
             else:
                 model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
                         input_ch_pts=input_ch, skips=skips,
-                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i]).to(device))
+                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i]))
     else:
         model = MVSNeRF(D=args.netdepth, W=args.netwidth,
                     input_ch_pts=input_ch, skips=skips,
-                    input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type).to(device)
+                    input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type)
 
     grad_vars = []
     if args.multi_volume:
@@ -789,24 +790,25 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
     model_fine = None
     if args.N_importance > 0:
         model_fine = MVSNeRF(D=args.netdepth, W=args.netwidth,
-                 input_ch_pts=input_ch, skips=skips,
-                 input_ch_views=input_ch_views, input_ch_feat=args.feat_dim).to(device)
+                input_ch_pts=input_ch, skips=skips,
+                input_ch_views=input_ch_views, input_ch_feat=args.feat_dim)
         grad_vars += list(model_fine.parameters())
 
-    network_query_fn = lambda pts, viewdirs, rays_feats, network_fn: run_network_mvs(pts, viewdirs, rays_feats, network_fn,
-                                                                        embed_fn=embed_fn,
-                                                                        embeddirs_fn=embeddirs_fn,
-                                                                        netchunk=args.netchunk)
+    def network_query_fn(pts, viewdirs, rays_feats, network_fn):
+        return run_network_mvs(pts, viewdirs, rays_feats, network_fn,
+                                    embed_fn=embed_fn,
+                                    embeddirs_fn=embeddirs_fn,
+                                    netchunk=args.netchunk)
 
     EncodingNet = None
     if use_mvs:
         if args.multi_volume and args.dataset_name=='dtu_gs':
             EncodingNet=[]
             for i in range(len(model)):
-                EncodingNet.append(MVSNet().to(device))
+                EncodingNet.append(MVSNet(depth_res=args.depth_res))
                 # grad_vars += list(EncodingNet[i].parameters()) #hanxue
         else:
-            EncodingNet = MVSNet().to(device)
+            EncodingNet = MVSNet(depth_res=args.depth_res)
             if args.dataset_name!='dtu_ft_gs':
                 grad_vars += list(EncodingNet.parameters())    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -829,7 +831,7 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
         # Load model
         if use_mvs:
             state_dict = ckpt['network_mvs_state_dict']
-            if args.multi_volume and isinstance(EncodingNet,list):
+            if args.multi_volume:
                 print('EncodingNet will have duplicates', args.multi_volume, args.dataset_name)
                 for i in range(len(EncodingNet)):
                     EncodingNet[i].load_state_dict(state_dict)
@@ -845,6 +847,10 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
 
     ##########################
 
+    if args.multi_volume:
+        EncodingNet = nn.ModuleList(EncodingNet)
+        model = nn.ModuleList(model)
+    
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
         'perturb': args.perturb,
@@ -983,8 +989,11 @@ class MVSNet(nn.Module):
     def __init__(self,
                  num_groups=1,
                  norm_act=InPlaceABN,
-                 levels=1):
+                 levels=1,
+                 depth_res=128):
         super(MVSNet, self).__init__()
+        self.depth_res = depth_res
+        print('=============depth res is ===========',self.depth_res)
         self.levels = levels  # 3 depth levels
         self.n_depths = [128,32,8]
         self.G = num_groups  # number of groups in groupwise correlation
@@ -1122,7 +1131,7 @@ class MVSNet(nn.Module):
         feats_l = feats_l.view(B, V, *feats_l.shape[1:])  # (B, V, C, h, w)
 
 
-        D = 128
+        D = self.depth_res
         t_vals = torch.linspace(0., 1., steps=D, device=imgs.device, dtype=imgs.dtype)  # (B, D)
         near, far = near_far  # assume batch size==1
         if not lindisp:
@@ -1138,6 +1147,7 @@ class MVSNet(nn.Module):
 
 
         volume_feat = self.cost_reg_2(volume_feat)  # (B, 1, D, h, w)
+        # print('volume_feat',volume_feat.shape)
         volume_feat = volume_feat.reshape(1,-1,*volume_feat.shape[2:])
 
         return volume_feat, feats_l, depth_values
@@ -1165,5 +1175,3 @@ class RefVolume(nn.Module):
             features = F.grid_sample(self.feat_volume, grid, align_corners=True, mode='bilinear')[:, :, 0].permute(2, 3, 0,1).squeeze()
             # print('feat_volume',self.feat_volume.shape,grid.shape,features.shape)
         return features
-
-

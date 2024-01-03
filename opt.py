@@ -6,7 +6,7 @@ def config_parser(cmd=None):
                         help='config file path')
     parser.add_argument("--expname", type=str,
                         help='experiment name')
-    parser.add_argument("--savedir", type=str,
+    parser.add_argument("--savedir", type=str,default='exp',
                         help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
@@ -77,6 +77,8 @@ def config_parser(cmd=None):
                         help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--ckpt", type=str, default=None,
                         help='specific weights npy file to reload for coarse network')
+    parser.add_argument("--depth_res", type=int, default=128)
+    parser.add_argument("--num_gpus", type=int, default=-1)
 
     # rendering options
     parser.add_argument("--N_samples", type=int, default=128,

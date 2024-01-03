@@ -268,6 +268,7 @@ class MVSSystem(LightningModule):
         #                                                self.volume, self.imgs,  **self.render_kwargs_train)
         opacity,scales,rotations,shs = rendering_gs(args, self.pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
                                                        self.volume, self.imgs,  **self.render_kwargs_train)
+
         # shs[:,0,:]=self.train_dataset.init_pointclouds[:,3:].to(torch.device('cuda'))
         # print('opacity',opacity[:2,:])
         means3D = xyz_coarse_sampled
