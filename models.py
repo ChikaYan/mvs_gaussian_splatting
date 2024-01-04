@@ -816,7 +816,9 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
 
 
     ##########################
-
+    # print('will set trace here')
+    # import pdb; 
+    # pdb.set_trace()
     # Load checkpoints
     ckpts = []
     if args.ckpt is not None and args.ckpt != 'None':
@@ -851,6 +853,17 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
         EncodingNet = nn.ModuleList(EncodingNet)
         model = nn.ModuleList(model)
     
+    resume_dir = f'{args.savedir}/{args.expname}/ckpts/'
+    os.makedirs(resume_dir, exist_ok=True)
+    resume_paths = os.listdir(resume_dir)
+    if len(resume_paths) > 0 :
+        resume_path = os.path.join(resume_dir,resume_paths[-1])
+        resume_ckpt = torch.load(resume_path)
+        EncodingNet.load_state_dict(resume_ckpt['network_mvs_state_dict'])
+        model.load_state_dict(resume_ckpt['network_fn_state_dict'])
+        print('================Resume from==================',resume_path)
+        start = resume_ckpt['global_step']
+
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
         'perturb': args.perturb,

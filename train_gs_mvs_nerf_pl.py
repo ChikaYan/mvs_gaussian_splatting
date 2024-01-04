@@ -50,6 +50,7 @@ class MVSSystem(LightningModule):
         # Create nerf model
         ###hanxue
         self.render_kwargs_train, self.render_kwargs_test, start, self.grad_vars = create_nerf_mvs(args, use_mvs=True, dir_embedder=False, pts_embedder=True)
+        self.start = start
         filter_keys(self.render_kwargs_train)
 
         # Create mvs model
@@ -90,7 +91,7 @@ class MVSSystem(LightningModule):
     #     if args.ckpt is not None and args.ckpt != 'None':
     #         ckpts = torch.load(args.ckpt)
     #     if ckpts is not None:
-    #         # print('ckpts keys',ckpts.keys()) dict_keys(['global_step', 'network_fn_state_dict', 'network_mvs_state_dict'])
+    #         # print('ckpts keys',ckpts.keys()) dict_keys(['start', 'network_fn_state_dict', 'network_mvs_state_dict'])
     #         if 'volume' not in ckpts.keys():
     #             self.MVSNet.train()
     #             with torch.no_grad():
@@ -226,6 +227,7 @@ class MVSSystem(LightningModule):
         if self.global_step%self.args.increaseactivation_step==0:
             self.active_sh_degree=min(self.active_sh_degree+1,3)
             print('self.active_sh_degree',self.active_sh_degree)
+        self.start = self.start+1
         zfar = 100.0
         znear = 0.01
         rays, rgbs_target, R, T, mask, FovX, FovY = self.decode_batch(batch)
@@ -274,7 +276,7 @@ class MVSSystem(LightningModule):
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-        if args.use_density_volume and 0 == self.global_step%200:
+        if args.use_density_volume and 0 == self.start%200:
             self.update_density_volume()
         rays_o, rays_d = rays[:, 0:3], rays[:, 3:6]
         # xyz_coarse_sampled, rays_o, rays_d, z_vals = ray_marcher(rays, N_samples=args.N_samples,
@@ -323,9 +325,9 @@ class MVSSystem(LightningModule):
             scales = scales,
             rotations = rotations,
             cov3D_precomp = None) #[3,H,W]
-        # if self.global_step%1000==0:
-        #     torchvision.utils.save_image(rendered_image, f'{self.savedir}/{self.args.expname}/train_{self.global_step:05d}' + ".png")
-        #     torchvision.utils.save_image(rgbs_target, f'{self.savedir}/{self.args.expname}/traingt_{self.global_step:05d}' + ".png")
+        # if self.start%1000==0:
+        #     torchvision.utils.save_image(rendered_image, f'{self.savedir}/{self.args.expname}/train_{self.start:05d}' + ".png")
+        #     torchvision.utils.save_image(rgbs_target, f'{self.savedir}/{self.args.expname}/traingt_{self.start:05d}' + ".png")
         
         log, loss = {}, 0
         # pdb.set_trace()
@@ -363,9 +365,12 @@ class MVSSystem(LightningModule):
                     self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
                     self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
                 # self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
-            if self.global_step%len(self.train_dataloader())==0:
+            if self.start%len(self.train_dataloader())==0:
                 print('train/PSNR',psnr.item())
-            if self.global_step%10000==0:
+            if self.start%10000==0:
+                # print('will set trace here')
+                # import pdb; 
+                # pdb.set_trace()
                 rgbs = torch.clamp(rendered_image.permute([1,2,0]),0,1)#.cpu()
                 img = rgbs_target.permute([1,2,0])#.cpu()
                 #depth_r = torch.cat(depth_preds).reshape(H, W)
@@ -376,8 +381,8 @@ class MVSSystem(LightningModule):
                 img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).detach().cpu().numpy() #depth_r.permute(1,2,0)
                 img_dir = Path(f'{self.savedir}/{self.args.expname}/train_rgb')
                 img_dir.mkdir(exist_ok=True, parents=True)
-                imageio.imwrite(str(img_dir / f"{self.global_step:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
-
+                imageio.imwrite(str(img_dir / f"{self.start:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
+                self.save_ckpt()
         return  {'loss':loss}
 
 
@@ -485,13 +490,13 @@ class MVSSystem(LightningModule):
             log['val_psnr_all'] = mse2psnr(torch.mean(img_err_abs ** 2))
 
             img_vis = torch.stack((img, rgbs, img_err_abs.cpu()*5)).permute(0,3,1,2)
-            # self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.global_step)
+            # self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.start)
             os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
 
             img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).numpy() #depth_r.permute(1,2,0)
             img_dir = Path(f'{self.savedir}/{self.args.expname}/val_rgb')
             img_dir.mkdir(exist_ok=True, parents=True)
-            imageio.imwrite(str(img_dir / f"{self.global_step:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
+            imageio.imwrite(str(img_dir / f"{self.start:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
         return log
 
     def validation_epoch_end(self, outputs):
@@ -537,7 +542,7 @@ class MVSSystem(LightningModule):
         os.makedirs(save_dir, exist_ok=True)
         path = f'{save_dir}/{name}.tar'
         ckpt = {
-            'global_step': self.global_step,
+            'global_step': self.start,
             'network_fn_state_dict': self.render_kwargs_train['network_fn'].state_dict(),
             # 'volume': self.volume.state_dict(),
             'network_mvs_state_dict': self.MVSNet.state_dict()}
@@ -576,6 +581,7 @@ if __name__ == '__main__':
     args = config_parser()
     os.makedirs(f'{args.savedir}',exist_ok=True)
     print('saving check points at',f'{args.savedir}/{args.expname}')
+    os.makedirs(f'{args.savedir}/{args.expname}',exist_ok=True)
     system = MVSSystem(args)
     print(system)
     # import pdb;pdb.set_trace()
