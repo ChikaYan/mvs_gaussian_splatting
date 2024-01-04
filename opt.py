@@ -6,7 +6,7 @@ def config_parser(cmd=None):
                         help='config file path')
     parser.add_argument("--expname", type=str,
                         help='experiment name')
-    parser.add_argument("--savedir", type=str,default='exp',
+    parser.add_argument("--savedir", type=str, default='exp',
                         help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
@@ -114,6 +114,8 @@ def config_parser(cmd=None):
                         help='frequency of visualize the depth')
     parser.add_argument("--val_only", action='store_true',
                         help='set to render synthetic data on a white bkgd (always use for dvoxels)')
+    parser.add_argument("--save_gs_ply_every", type=int, default=10000,
+                        help='frequency of saving gs ply')
     if cmd is not None:
         return parser.parse_args(cmd)
     else:

@@ -210,7 +210,8 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
             # print('shape of raw output',raw.shape)
             raws.append(raw)
         opacity,scales,rotation,feature_ds,feature_rest = raws[0],raws[1],raws[2],raws[3][:,:3],raws[3][:,3:].reshape(-1,15,3)
-        return opacity,scales,rotation,torch.cat((torch.unsqueeze(feature_ds, 1), feature_rest), dim=1)
+        # return opacity,scales,rotation,torch.cat((torch.unsqueeze(feature_ds, 1), feature_rest), dim=1)
+        return opacity,scales,rotation, torch.unsqueeze(feature_ds, 1), feature_rest
     else:
         # rays_pts
         input_feat = gen_pts_feats_gs(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, args.feat_dim, \
@@ -220,7 +221,8 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
         raw = network_query_fn(rays_ndc, None, input_feat, network_fn)
         opacity,scales,rotation,feature_ds,feature_rest = raw[:,:1],raw[:,1:4],raw[:,4:8],raw[:,8:11],raw[:,11:].reshape(-1,15,3)
         # print('shape of opacity,scales,rotation,feature',opacity.shape,scales.shape,rotation.shape,feature.shape)
-        return opacity,scales,rotation,torch.cat((torch.unsqueeze(feature_ds, 1), feature_rest), dim=1)
+        return opacity,scales,rotation, torch.unsqueeze(feature_ds, 1), feature_rest
+        # return opacity,scales,rotation,torch.cat((torch.unsqueeze(feature_ds, 1), feature_rest), dim=1)
     # if raw.shape[-1]>4:
     #     input_feat = torch.cat((input_feat[...,:8],raw[...,4:]), dim=-1)
 
