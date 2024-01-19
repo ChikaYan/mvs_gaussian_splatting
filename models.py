@@ -53,6 +53,7 @@ class Embedder:
         repeat = inputs.dim()-1
         # print('repeat',repeat,inputs.unsqueeze(-2).shape,self.freq_bands.shape,inputs.shape)\
         # repeat 2 torch.Size([1024, 128, 1, 3]) torch.Size([1, 10, 1]) torch.Size([1024, 128, 3])
+        self.freq_bands = self.freq_bands.type_as(inputs)
         inputs_scaled = (inputs.unsqueeze(-2) * self.freq_bands.view(*[1]*repeat,-1,1)).reshape(*inputs.shape[:-1],-1)
         inputs_scaled = torch.cat((inputs, torch.sin(inputs_scaled), torch.cos(inputs_scaled)),dim=-1)
         return inputs_scaled
@@ -206,7 +207,7 @@ class Renderer_ours(nn.Module):
     def forward(self, x):
         dim = x.shape[-1]
         in_ch_feat = dim-self.in_ch_pts-self.in_ch_views
-        # print('several feature dims',self.in_ch_pts, in_ch_feat, self.in_ch_views) 63 20 3
+        # print('several feature dims',x.shape,self.in_ch_pts, in_ch_feat, self.in_ch_views) #63 20 3
         input_pts, input_feats, input_views = torch.split(x, [self.in_ch_pts, in_ch_feat, self.in_ch_views], dim=-1)
         # print('input_pts shape,',input_pts.shape, input_feats.shape, input_views.shape) \
         # torch.Size([1024, 128, 63]) torch.Size([1024, 128, 20]) torch.Size([1024, 128, 3])
@@ -649,7 +650,7 @@ class Renderer_gs(nn.Module):
                 h = torch.cat([input_pts, h], -1)
         if self.output_dim is None:
             opacity = self.opacity_activation(self.opacity_linear(h))
-            scales = self.scaling_activation(self.scale_linear(h))*0.05
+            scales = self.scaling_activation(self.scale_linear(h))
             rotation = self.rotation_activation(self.rotation_linear(h))
             feature_ds = self.feat_ds_linear(h)
             features_rest = self.feat_rest_linear(h)
@@ -665,7 +666,7 @@ class Renderer_gs(nn.Module):
                 features_rest = self.feat_rest_linear(h)
                 return torch.cat([feature_ds,features_rest],-1)
             elif self.output_dim == 3 or (self.output_dim==1 and self.scale):
-                scales = self.scaling_activation(self.output_liners[-1](h))*0.05
+                scales = self.scaling_activation(self.output_liners[-1](h))
                 return scales
             elif self.output_dim==1:
                 opacity = self.opacity_activation(self.output_liners[-1](h))
@@ -789,24 +790,25 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
     model_fine = None
     if args.N_importance > 0:
         model_fine = MVSNeRF(D=args.netdepth, W=args.netwidth,
-                 input_ch_pts=input_ch, skips=skips,
-                 input_ch_views=input_ch_views, input_ch_feat=args.feat_dim).to(device)
+                input_ch_pts=input_ch, skips=skips,
+                input_ch_views=input_ch_views, input_ch_feat=args.feat_dim)
         grad_vars += list(model_fine.parameters())
 
-    network_query_fn = lambda pts, viewdirs, rays_feats, network_fn: run_network_mvs(pts, viewdirs, rays_feats, network_fn,
-                                                                        embed_fn=embed_fn,
-                                                                        embeddirs_fn=embeddirs_fn,
-                                                                        netchunk=args.netchunk)
+    def network_query_fn(pts, viewdirs, rays_feats, network_fn):
+        return run_network_mvs(pts, viewdirs, rays_feats, network_fn,
+                                    embed_fn=embed_fn,
+                                    embeddirs_fn=embeddirs_fn,
+                                    netchunk=args.netchunk)
 
     EncodingNet = None
     if use_mvs:
         if args.multi_volume and args.dataset_name=='dtu_gs':
             EncodingNet=[]
             for i in range(len(model)):
-                EncodingNet.append(MVSNet().to(device))
+                EncodingNet.append(MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device))
                 # grad_vars += list(EncodingNet[i].parameters()) #hanxue
         else:
-            EncodingNet = MVSNet().to(device)
+            EncodingNet = MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device)
             if args.dataset_name!='dtu_ft_gs':
                 grad_vars += list(EncodingNet.parameters())    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -814,7 +816,9 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
 
 
     ##########################
-
+    # print('will set trace here')
+    # import pdb; 
+    # pdb.set_trace()
     # Load checkpoints
     ckpts = []
     if args.ckpt is not None and args.ckpt != 'None':
@@ -829,7 +833,7 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
         # Load model
         if use_mvs:
             state_dict = ckpt['network_mvs_state_dict']
-            if args.multi_volume and isinstance(EncodingNet,list):
+            if args.multi_volume:
                 print('EncodingNet will have duplicates', args.multi_volume, args.dataset_name)
                 for i in range(len(EncodingNet)):
                     EncodingNet[i].load_state_dict(state_dict)
@@ -844,6 +848,21 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
         #     model_fine.load_state_dict(ckpt['network_fine_state_dict'])
 
     ##########################
+
+    if args.multi_volume:
+        EncodingNet = nn.ModuleList(EncodingNet)
+        model = nn.ModuleList(model)
+    
+    resume_dir = f'{args.savedir}/{args.expname}/ckpts/'
+    os.makedirs(resume_dir, exist_ok=True)
+    resume_paths = os.listdir(resume_dir)
+    if len(resume_paths) > 0 :
+        resume_path = os.path.join(resume_dir,resume_paths[-1])
+        resume_ckpt = torch.load(resume_path)
+        EncodingNet.load_state_dict(resume_ckpt['network_mvs_state_dict'])
+        model.load_state_dict(resume_ckpt['network_fn_state_dict'])
+        print('================Resume from==================',resume_path)
+        start = resume_ckpt['global_step']
 
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
@@ -900,7 +919,7 @@ class FeatureNet(nn.Module):
     """
     output 3 levels of features using a FPN structure
     """
-    def __init__(self, norm_act=InPlaceABN):
+    def __init__(self, norm_act=InPlaceABN,output_dim=32):
         super(FeatureNet, self).__init__()
 
         self.conv0 = nn.Sequential(
@@ -917,7 +936,7 @@ class FeatureNet(nn.Module):
                         ConvBnReLU(32, 32, 3, 1, 1, norm_act=norm_act),
                         ConvBnReLU(32, 32, 3, 1, 1, norm_act=norm_act))
 
-        self.toplayer = nn.Conv2d(32, 32, 1)
+        self.toplayer = nn.Conv2d(32, output_dim, 1)
 
     def _upsample_add(self, x, y):
         return F.interpolate(x, scale_factor=2,
@@ -934,33 +953,54 @@ class FeatureNet(nn.Module):
 
 
 class CostRegNet(nn.Module):
-    def __init__(self, in_channels, norm_act=InPlaceABN):
+    def __init__(self, in_channels, norm_act=InPlaceABN,output_dim=8):
         super(CostRegNet, self).__init__()
-        self.conv0 = ConvBnReLU3D(in_channels, 8, norm_act=norm_act)
+        if output_dim!=8:
+            self.conv0 = ConvBnReLU3D(in_channels, output_dim, norm_act=norm_act)
+            self.conv1 = ConvBnReLU3D(output_dim, 32, stride=2, norm_act=norm_act)
+            self.conv2 = ConvBnReLU3D(32, 32, norm_act=norm_act)
+            self.conv3 = ConvBnReLU3D(32, 64, stride=2, norm_act=norm_act)
+            self.conv4 = ConvBnReLU3D(64, 64, norm_act=norm_act)
+            self.conv5 = ConvBnReLU3D(64, 128, stride=2, norm_act=norm_act)
+            self.conv6 = ConvBnReLU3D(128, 128, norm_act=norm_act)
+            self.conv7 = nn.Sequential(
+                nn.ConvTranspose3d(128, 64, 3, padding=1, output_padding=1,
+                                stride=2, bias=False),
+                norm_act(64))
+            self.conv9 = nn.Sequential(
+                nn.ConvTranspose3d(64, 32, 3, padding=1, output_padding=1,
+                                stride=2, bias=False),
+                norm_act(32))
+            self.conv11 = nn.Sequential(
+                nn.ConvTranspose3d(32, output_dim, 3, padding=1, output_padding=1,
+                                stride=2, bias=False),
+                norm_act(output_dim))
+        else:
+            self.conv0 = ConvBnReLU3D(in_channels, 8, norm_act=norm_act)
 
-        self.conv1 = ConvBnReLU3D(8, 16, stride=2, norm_act=norm_act)
-        self.conv2 = ConvBnReLU3D(16, 16, norm_act=norm_act)
+            self.conv1 = ConvBnReLU3D(8, 16, stride=2, norm_act=norm_act)
+            self.conv2 = ConvBnReLU3D(16, 16, norm_act=norm_act)
 
-        self.conv3 = ConvBnReLU3D(16, 32, stride=2, norm_act=norm_act)
-        self.conv4 = ConvBnReLU3D(32, 32, norm_act=norm_act)
+            self.conv3 = ConvBnReLU3D(16, 32, stride=2, norm_act=norm_act)
+            self.conv4 = ConvBnReLU3D(32, 32, norm_act=norm_act)
 
-        self.conv5 = ConvBnReLU3D(32, 64, stride=2, norm_act=norm_act)
-        self.conv6 = ConvBnReLU3D(64, 64, norm_act=norm_act)
+            self.conv5 = ConvBnReLU3D(32, 64, stride=2, norm_act=norm_act)
+            self.conv6 = ConvBnReLU3D(64, 64, norm_act=norm_act)
 
-        self.conv7 = nn.Sequential(
-            nn.ConvTranspose3d(64, 32, 3, padding=1, output_padding=1,
-                               stride=2, bias=False),
-            norm_act(32))
+            self.conv7 = nn.Sequential(
+                nn.ConvTranspose3d(64, 32, 3, padding=1, output_padding=1,
+                                stride=2, bias=False),
+                norm_act(32))
 
-        self.conv9 = nn.Sequential(
-            nn.ConvTranspose3d(32, 16, 3, padding=1, output_padding=1,
-                               stride=2, bias=False),
-            norm_act(16))
+            self.conv9 = nn.Sequential(
+                nn.ConvTranspose3d(32, 16, 3, padding=1, output_padding=1,
+                                stride=2, bias=False),
+                norm_act(16))
 
-        self.conv11 = nn.Sequential(
-            nn.ConvTranspose3d(16, 8, 3, padding=1, output_padding=1,
-                               stride=2, bias=False),
-            norm_act(8))
+            self.conv11 = nn.Sequential(
+                nn.ConvTranspose3d(16, 8, 3, padding=1, output_padding=1,
+                                stride=2, bias=False),
+                norm_act(8))
 
         # self.conv12 = nn.Conv3d(8, 8, 3, stride=1, padding=1, bias=True)
 
@@ -983,17 +1023,27 @@ class MVSNet(nn.Module):
     def __init__(self,
                  num_groups=1,
                  norm_act=InPlaceABN,
-                 levels=1):
+                 levels=1,
+                 depth_res=128,
+                 featurenet_outputdim=32,
+                 n_views=3,
+                 volume_feat_outputdim=8):
         super(MVSNet, self).__init__()
+        self.depth_res = depth_res
+        print('=============depth res is ===========',self.depth_res)
         self.levels = levels  # 3 depth levels
         self.n_depths = [128,32,8]
         self.G = num_groups  # number of groups in groupwise correlation
-        self.feature = FeatureNet()
+        self.featurenet_outputdim=featurenet_outputdim
+        self.volume_feat_outputdim = volume_feat_outputdim
+        self.feature = FeatureNet(output_dim=self.featurenet_outputdim)
 
         self.N_importance = 0
         self.chunk = 1024
+        self.n_views=n_views
 
-        self.cost_reg_2 = CostRegNet(32+9, norm_act) #hanxue need to modify its number
+
+        self.cost_reg_2 = CostRegNet(self.featurenet_outputdim+3*self.n_views, norm_act,output_dim=self.volume_feat_outputdim) #hanxue need to modify its number
 
     def build_volume_costvar(self, feats, proj_mats, depth_values, pad=0):
         # feats: (B, V, C, H, W)
@@ -1067,6 +1117,7 @@ class MVSNet(nn.Module):
             ref_feats = F.pad(ref_feats, (pad, pad, pad, pad), "constant", 0)
 
         img_feat = torch.empty((B, 3*V + 32, D, *ref_feats.shape[-2:]), device=feats.device, dtype=torch.float)
+        # print('img_feat',img_feat.shape)
         imgs = F.interpolate(imgs.view(B * V, *imgs.shape[2:]), (H, W), mode='bilinear', align_corners=False).view(B, V,-1,H,W).permute(1, 0, 2, 3, 4)
         img_feat[:, :3, :, pad:H + pad, pad:W + pad] = imgs[0].unsqueeze(2).expand(-1, -1, D, -1, -1)
 
@@ -1120,9 +1171,9 @@ class MVSNet(nn.Module):
         feats_l = feats  # (B*V, C, h, w)
 
         feats_l = feats_l.view(B, V, *feats_l.shape[1:])  # (B, V, C, h, w)
+        # print('feats_l',V,feats_l.shape)
 
-
-        D = 128
+        D = self.depth_res
         t_vals = torch.linspace(0., 1., steps=D, device=imgs.device, dtype=imgs.dtype)  # (B, D)
         near, far = near_far  # assume batch size==1
         if not lindisp:
@@ -1136,8 +1187,9 @@ class MVSNet(nn.Module):
         if return_color:
             feats_l = torch.cat((volume_feat[:,:V*3].view(B, V, 3, *volume_feat.shape[2:]),in_masks.unsqueeze(2)),dim=2)
 
-
+        # print('volume_feat',volume_feat.shape)
         volume_feat = self.cost_reg_2(volume_feat)  # (B, 1, D, h, w)
+        
         volume_feat = volume_feat.reshape(1,-1,*volume_feat.shape[2:])
 
         return volume_feat, feats_l, depth_values
@@ -1165,5 +1217,3 @@ class RefVolume(nn.Module):
             features = F.grid_sample(self.feat_volume, grid, align_corners=True, mode='bilinear')[:, :, 0].permute(2, 3, 0,1).squeeze()
             # print('feat_volume',self.feat_volume.shape,grid.shape,features.shape)
         return features
-
-

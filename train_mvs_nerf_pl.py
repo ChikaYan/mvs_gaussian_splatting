@@ -8,7 +8,8 @@ from data import dataset_dict
 from models import *
 from renderer import *
 from utils import *
-
+import yaml
+from pathlib import Path
 # optimizer, scheduler, visualization
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -83,8 +84,13 @@ class MVSSystem(LightningModule):
     def __init__(self, args):
         super(MVSSystem, self).__init__()
         self.args = args
-        self.args.feat_dim = 8+3*4
+        self.savedir = args.savedir
+        self.args.feat_dim = args.volume_feat_outputdim+self.args.n_views*4
         self.idx = 0
+        Path(f'{args.savedir}/{args.expname}/').mkdir(exist_ok=True, parents=True)
+
+        with Path(f'{args.savedir}/{args.expname}/args.yaml').open('w') as f:
+            yaml.dump(args, f)
 
         self.loss = SL1Loss()
         self.learning_rate = args.lrate
@@ -125,8 +131,8 @@ class MVSSystem(LightningModule):
     def prepare_data(self):
         dataset = dataset_dict[self.args.dataset_name]
         train_dir, val_dir = self.args.datadir , self.args.datadir
-        self.train_dataset = dataset(root_dir=train_dir, split='train', max_len=-1 , downSample=args.imgScale_train)
-        self.val_dataset   = dataset(root_dir=val_dir, split='test', max_len=10 , downSample=args.imgScale_test)#
+        self.train_dataset = dataset(root_dir=train_dir, split='train', n_views=args.n_views, max_len=-1, downSample=args.imgScale_train)
+        self.val_dataset   = dataset(root_dir=val_dir, split='test', n_views=args.n_views,max_len=10, downSample=args.imgScale_test)#
 
 
     def configure_optimizers(self):
@@ -156,9 +162,9 @@ class MVSSystem(LightningModule):
         data_mvs, pose_ref = self.decode_batch(batch)
         imgs, proj_mats = data_mvs['images'], data_mvs['proj_mats']
         near_fars, depths_h = data_mvs['near_fars'], data_mvs['depths_h']
+        # print('imgs',imgs.shape,proj_mats.shape,near_fars.shape)
 
-
-        volume_feature, img_feat, depth_values = self.MVSNet(imgs[:, :3], proj_mats[:, :3], near_fars[0,0],pad=args.pad)
+        volume_feature, img_feat, depth_values = self.MVSNet(imgs[:, :self.args.n_views], proj_mats[:, :self.args.n_views], near_fars[0,0],pad=args.pad)
         imgs = self.unpreprocess(imgs)
 
 
@@ -226,7 +232,7 @@ class MVSSystem(LightningModule):
         data_mvs, pose_ref = self.decode_batch(batch)
         imgs, proj_mats = data_mvs['images'], data_mvs['proj_mats']
         near_fars, depths_h = pose_ref['near_fars'], data_mvs['depths_h']
-
+        # print('imgs',imgs.shape,proj_mats.shape,near_fars.shape)
         self.MVSNet.train()
         H, W = imgs.shape[-2:]
         H, W = int(H), int(W)
@@ -240,7 +246,7 @@ class MVSSystem(LightningModule):
             args.img_downscale = torch.rand((1,)) * 0.75 + 0.25  # for super resolution
             world_to_ref = pose_ref['w2cs'][0]
             tgt_to_world, intrinsic = pose_ref['c2ws'][-1], pose_ref['intrinsics'][-1]
-            volume_feature, img_feat, _ = self.MVSNet(imgs[:, :3], proj_mats[:, :3], near_fars[0], pad=args.pad)
+            volume_feature, img_feat, _ = self.MVSNet(imgs[:, :self.args.n_views], proj_mats[:, :self.args.n_views], near_fars[0], pad=args.pad)
             imgs = self.unpreprocess(imgs)
             rgbs, depth_preds = [],[]
             for chunk_idx in range(H*W//args.chunk + int(H*W%args.chunk>0)):
@@ -269,9 +275,9 @@ class MVSSystem(LightningModule):
                 log['val_psnr'] = mse2psnr(torch.mean(img_err_abs[:,mask] ** 2))
             else:
                 log['val_psnr'] = mse2psnr(torch.mean(img_err_abs**2))
-
-            np.save(f'runs_new/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:03d}.npy',depth_r)
-            imageio.imwrite(f'runs_new/{self.args.expname}/{self.args.expname}/rgb_{self.global_step:08d}_{self.idx:03d}.png',(rgb.permute(1,2,0).numpy()*255).astype('uint8'))
+            os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
+            np.save(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:03d}.npy',depth_r)
+            imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/rgb_{self.global_step:08d}_{self.idx:03d}.png',(rgb.permute(1,2,0).numpy()*255).astype('uint8'))
             if self.args.with_depth:
                 rmse = (depth_r[mask] - depth_gt_render[mask])**2
                 rmse = torch.sqrt(rmse.sum()/mask.sum())#.item()
@@ -303,10 +309,10 @@ class MVSSystem(LightningModule):
             img_vis = torch.cat((imgs, torch.stack((rgb, img_err_abs.cpu()*5))), dim=0) # N 3 H W
             self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.global_step)
 
-            os.makedirs(f'runs_new/{self.args.expname}/{self.args.expname}/',exist_ok=True)
+            
             img_vis = torch.cat((img_vis,depth_pred_r_[None]),dim=0).permute(2,0,3,1).reshape(img_vis.shape[2],-1,3).numpy()
 
-            imageio.imwrite(f'runs_new/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
+            imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
             self.idx += 1
         print('psnr, ssim, lpips, depth_abs_rel, depth_rmse',\
               log['val_psnr'],log['val_ssim'],log['val_lpips'],log['val_depth_abs_rel'],log['val_depth_rmse'])
@@ -341,7 +347,7 @@ class MVSSystem(LightningModule):
 
 
     def save_ckpt(self, name='latest'):
-        save_dir = f'runs_new/{self.args.expname}/ckpts/'
+        save_dir = f'{self.savedir}/{self.args.expname}/ckpts/'
         os.makedirs(save_dir, exist_ok=True)
         path = f'{save_dir}/{name}.tar'
         ckpt = {
@@ -356,14 +362,17 @@ class MVSSystem(LightningModule):
 if __name__ == '__main__':
     torch.set_default_dtype(torch.float32)
     args = config_parser()
+    os.makedirs(f'{args.savedir}',exist_ok=True)
+    print('saving check points at',f'{args.savedir}/{args.expname}')
+    os.makedirs(f'{args.savedir}/{args.expname}',exist_ok=True)
     system = MVSSystem(args)
-    checkpoint_callback = ModelCheckpoint(os.path.join(f'runs_new/{args.expname}/ckpts/','{epoch:02d}'),
+    checkpoint_callback = ModelCheckpoint(os.path.join(f'{args.savedir}/{args.expname}/ckpts/','{epoch:02d}'),
                                           monitor='val/PSNR',
                                           mode='max',
                                           save_top_k=0)
 
     logger = loggers.TestTubeLogger(
-        save_dir="runs_new",
+        save_dir=args.savedir,
         name=args.expname,
         debug=False,
         create_git_tag=False

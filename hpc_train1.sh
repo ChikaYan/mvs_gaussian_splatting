@@ -2,8 +2,8 @@
 #SBATCH --account OZTIRELI-SL2-GPU
 #SBATCH -p ampere
 #SBATCH --nodes 1
-#SBATCH --gres=gpu:1
-#SBATCH --time=20:00:00
+#SBATCH --gres=gpu:4
+#SBATCH --time=36:00:00
 #SBATCH --mail-type=NONE
 
 . /etc/profile.d/modules.sh
@@ -26,4 +26,10 @@ conda activate mvsnerf1
 # python train_gs_mvs_nerf_finetuning_pl.py --dataset_name dtu_ft_gs --datadir /rds/user/hl589/hpc-work/data/dtu_example/scan114 --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname singlescene_nopointloss_multi_volume_scan114_gs-mvsnerf-ft-lr1e-4 --increaseactivation_step 300000 --num_epochs 10000  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 50 --net_type v3 --netchunk 100000 
 #python train_gs_mvs_nerf_finetuning_pl.py --dataset_name dtu_ft_gs --datadir /rds/user/hl589/hpc-work/data/dtu_example/scan114 --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname singlescene_pointloss_multi_volume_scan114_gs-mvsnerf-ft-lr1e-4 --withpointrgbloss --increaseactivation_step 300000 --num_epochs 10000  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 50 --net_type v3 --netchunk 100000 
 
-python train_gs_mvs_nerf_finetuning_pl.py --dataset_name dtu_ft_gs --datadir /rds/user/hl589/hpc-work/data/dtu_example/scan114 --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname singlescene_nopointloss_grow1w_multi_volume_scan114_gs-mvsnerf-ft-lr5e-4 --increaseactivation_step 10000 --num_epochs 10000  --multi_volume --lrate 0.0005  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 50 --net_type v3 --netchunk 100000 
+# python train_gs_mvs_nerf_finetuning_pl.py --dataset_name dtu_ft_gs --datadir /rds/user/hl589/hpc-work/data/dtu_example/scan114 --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname singlescene_nopointloss_grow1w_multi_volume_scan114_gs-mvsnerf-ft-lr1e-4 --increaseactivation_step 10000 --num_epochs 10000  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 50 --net_type v3 --netchunk 100000 
+
+# python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname dtu_gs_nopointloss_grow1w_multi_volume_lr1e-4 --increaseactivation_step 10000 --num_epochs 10000  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 50 --net_type v3 --netchunk 100000 
+# python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname dtu_gs_onescale_point10_nopointloss_grow1w_multi_volume_lr1e-4 --singlescale --increaseactivation_step 10000 --num_epochs 10000  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 5000 --net_type v3 --netchunk 100000 
+# python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname newversion_reso192_gpu4_dtu_gs_withmask_onescale0.005_point10_nopointloss_grow1w_multi_volume_lr1e-4 --singlescale --increaseactivation_step 10000 --num_epochs 10000  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 5000 --net_type v3 --netchunk 100000 --depth_res 192
+
+python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname newversion_gpu4_dtu_gs_withmask_onescale0.001_point10_nopointloss_grow1w_multi_volume_lr1e-4 --singlescale --increaseactivation_step 10000 --num_epochs 10000  --multi_volume --lrate 0.0004  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 5000 --net_type v3 --netchunk 100000 

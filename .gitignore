@@ -138,3 +138,9 @@ runs_fine_tuning/
 
 # vim ctags file
 tags
+
+runs_new/
+
+slurm-*.out
+
+*.sh

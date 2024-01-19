@@ -6,7 +6,7 @@ def config_parser(cmd=None):
                         help='config file path')
     parser.add_argument("--expname", type=str,
                         help='experiment name')
-    parser.add_argument("--savedir", type=str,
+    parser.add_argument("--savedir", type=str,default='exp',
                         help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
@@ -77,6 +77,8 @@ def config_parser(cmd=None):
                         help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--ckpt", type=str, default=None,
                         help='specific weights npy file to reload for coarse network')
+    parser.add_argument("--depth_res", type=int, default=128)
+    parser.add_argument("--num_gpus", type=int, default=-1)
 
     # rendering options
     parser.add_argument("--N_samples", type=int, default=128,
@@ -99,6 +101,14 @@ def config_parser(cmd=None):
                         help='std dev of noise added to regularize sigma_a output, 1e0 recommended')
     parser.add_argument("--singlescale", action='store_true',
                         help='use full 5D input instead of 3D')
+    parser.add_argument('--decay_scale', type=float, default=0.1,
+                        help='learning rate decay amount')
+    parser.add_argument("--n_views", type=int, default=3,
+                        help='log2 of max freq for positional encoding (2D direction)')
+    parser.add_argument("--featurenet_outputdim", type=int, default=32,
+                        help='log2 of max freq for positional encoding (2D direction)')
+    parser.add_argument("--volume_feat_outputdim", type=int, default=8,
+                        help='log2 of max freq for positional encoding (2D direction)')
 
 
 
