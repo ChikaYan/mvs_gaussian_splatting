@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
-from utils import normal_vect, index_point_feature, build_color_volume
+from torch import nn
+from utils import normal_vect, index_point_feature, build_color_volume,index_point_feature_gs
 
 def depth2dist(z_vals, cos_angle):
     # z_vals: [N_ray N_sample]
@@ -123,34 +124,35 @@ def gen_dir_feature(w2c_ref, rays_dir):
     dirs = rays_dir @ w2c_ref[:3,:3].t() # [N_rays, 3]
     return dirs
 
-def gen_pts_feats(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, feat_dim, img_feat=None, img_downscale=1.0, use_color_volume=False, net_type='v0'):
+def gen_pts_feats(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, feat_dim, img_feat=None, img_downscale=1.0, use_color_volume=False, net_type='v0',volume_feat_outputdim=8):
     N_rays, N_samples = rays_pts.shape[:2]
     if img_feat is not None:
         feat_dim += img_feat.shape[1]*img_feat.shape[2]
-
+    # print('get pts feats',rays_ndc.shape) #[1024, 128, 3]
     if not use_color_volume:
         input_feat = torch.empty((N_rays, N_samples, feat_dim), device=imgs.device, dtype=torch.float)
         ray_feats = index_point_feature(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
-        input_feat[..., :8] = ray_feats
-        input_feat[..., 8:] = build_color_volume(rays_pts, pose_ref, imgs, img_feat, with_mask=True, downscale=img_downscale)
+        input_feat[..., :volume_feat_outputdim] = ray_feats
+        input_feat[..., volume_feat_outputdim:] = build_color_volume(rays_pts, pose_ref, imgs, img_feat, with_mask=True, downscale=img_downscale)
     else:
         input_feat = index_point_feature(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
     return input_feat
 
-def gen_pts_feats_gs(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, feat_dim, img_feat=None, img_downscale=1.0, use_color_volume=False, net_type='v0'):
+def gen_pts_feats_gs(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, feat_dim, img_feat=None, img_downscale=1.0, use_color_volume=False, net_type='v0',volume_feat_outputdim=8):
     N_samples,_ = rays_pts.shape
     if img_feat is not None:
         feat_dim += img_feat.shape[1]*img_feat.shape[2]
-
+    # print('get pts feats gs',rays_ndc.shape)
     if not use_color_volume:
         input_feat = torch.empty((N_samples, feat_dim), device=imgs.device, dtype=torch.float)
-        ray_feats = index_point_feature(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
+        ray_feats = index_point_feature_gs(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
+        # print('ray_feats.shape,',ray_feats.shape)
         ray_feats = ray_feats.squeeze()
-        input_feat[..., :8] = ray_feats
+        input_feat[..., :volume_feat_outputdim] = ray_feats
         colors = build_color_volume(rays_pts, pose_ref, imgs, img_feat, with_mask=True, downscale=img_downscale)
-        input_feat[..., 8:] = colors.squeeze()
+        input_feat[..., volume_feat_outputdim:] = colors.squeeze()
     else:
-        input_feat = index_point_feature(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
+        input_feat = index_point_feature_gs(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
     return input_feat
 
 def rendering(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, rays_dir,
@@ -168,12 +170,14 @@ def rendering(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, rays
 
     # rays_pts
     input_feat = gen_pts_feats(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, args.feat_dim, \
-                               img_feat, args.img_downscale, args.use_color_volume, args.net_type)
+                               img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=args.volume_feat_outputdim)
     ### point wise feature extracted from cost volumn(8)+4(rgb+mask)*numviews
+    # print('rays_ndc.shape,input_feature.shape,angle.shape',rays_ndc.shape,input_feat.shape,angle.shape)
     # rays_ndc = rays_ndc * 2 - 1.0
     raw = network_query_fn(rays_ndc, angle, input_feat, network_fn)
+    # print('raw shape',raw.shape)
     if raw.shape[-1]>4:
-        input_feat = torch.cat((input_feat[...,:8],raw[...,4:]), dim=-1)
+        input_feat = torch.cat((input_feat[...,:args.volume_feat_outputdim],raw[...,4:]), dim=-1)
 
     dists = depth2dist(depth_candidates, cos_angle)
     # dists = ndc2dist(rays_ndc)
@@ -194,14 +198,14 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
     #     angle = gen_dir_feature(pose_ref['w2cs'][0], rays_dir/cos_angle.unsqueeze(-1))  # view dir feature
     # else:
     #     angle = rays_dir/cos_angle.unsqueeze(-1)
-    if isinstance(volume_feature, list) and isinstance(network_fn, list):
+    if isinstance(volume_feature, list) and isinstance(network_fn, nn.ModuleList):
         # print('during rendering we use multi_volume')
         assert len(volume_feature)==len(network_fn)
         raws = []
         for i in range(len(volume_feature)):
             # rays_pts
             input_feat = gen_pts_feats_gs(imgs, volume_feature[i], rays_pts, pose_ref, rays_ndc, args.feat_dim, \
-                                    img_feat, args.img_downscale, args.use_color_volume, args.net_type)
+                                    img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=args.volume_feat_outputdim)
             ### point wise feature extracted from cost volumn(8)+4(rgb+mask)*numviews
             # rays_ndc = rays_ndc * 2 - 1.0
             raw = network_query_fn(rays_ndc, None, input_feat, network_fn[i])
@@ -212,7 +216,7 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
     else:
         # rays_pts
         input_feat = gen_pts_feats_gs(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, args.feat_dim, \
-                                img_feat, args.img_downscale, args.use_color_volume, args.net_type)
+                                img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=args.volume_feat_outputdim)
         ### point wise feature extracted from cost volumn(8)+4(rgb+mask)*numviews
         # rays_ndc = rays_ndc * 2 - 1.0
         raw = network_query_fn(rays_ndc, None, input_feat, network_fn)

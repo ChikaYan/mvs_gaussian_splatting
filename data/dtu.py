@@ -145,10 +145,14 @@ class MVSDatasetDTU(Dataset):
         sample = {}
         scan, light_idx, target_view, src_views = self.metas[idx]
         if self.split=='train':
-            ids = torch.randperm(5)[:3]
-            view_ids = [src_views[i] for i in ids] + [target_view]
+            if self.n_views>3:
+                ids = torch.randperm(10)[:self.n_views]
+                view_ids = [src_views[i] for i in ids] + [target_view]
+            else:
+                ids = torch.randperm(5)[:3]
+                view_ids = [src_views[i] for i in ids] + [target_view]
         else:
-            view_ids = [src_views[i] for i in range(3)] + [target_view]
+            view_ids = [src_views[i] for i in range(self.n_views)] + [target_view]
 
 
         affine_mat, affine_mat_inv = [], []
