@@ -802,15 +802,14 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
 
     EncodingNet = None
     if use_mvs:
-        if args.multi_volume and args.dataset_name=='dtu_gs':
+        if args.multi_volume:
             EncodingNet=[]
             for i in range(len(model)):
                 EncodingNet.append(MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device))
                 # grad_vars += list(EncodingNet[i].parameters()) #hanxue
         else:
             EncodingNet = MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device)
-            if args.dataset_name!='dtu_ft_gs':
-                grad_vars += list(EncodingNet.parameters())    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            grad_vars += list(EncodingNet.parameters())
 
     start = 0
 

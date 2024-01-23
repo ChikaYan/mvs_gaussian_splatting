@@ -17,9 +17,10 @@ def PILtoTorch(pil_image, resolution):
         return resized_image.unsqueeze(dim=-1).permute(2, 0, 1)
     
 class DTU_gs(Dataset):
-    def __init__(self, args, split='train', load_ref=False,n_views=3,max_len=-1):
+    def __init__(self, args=None, split='train', load_ref=False,n_views=3,max_len=-1, **kwargs):
         self.args = args
         self.root_dir = args.datadir
+        self.pointcloud_dir = self.root_dir
         self.split = split
         downsample = args.imgScale_train if split=='train' else args.imgScale_test
         assert self.split in ['train', 'val', 'test'], \

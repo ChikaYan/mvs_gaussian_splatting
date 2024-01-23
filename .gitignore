@@ -144,3 +144,5 @@ runs_new/
 slurm-*.out
 
 *.sh
+
+exp/

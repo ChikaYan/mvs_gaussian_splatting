@@ -64,7 +64,7 @@ class MVSSystem(LightningModule):
 
         self.model_register = self.render_kwargs_train['network_fn']
         self.MVSNet_register_fine = self.render_kwargs_train['network_fine']
-        # pc_path = os.path.join(self.train_dataset.root_dir,f'Pointclouds10/scan114_pointclouds.npy')
+        # pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'Pointclouds10/scan114_pointclouds.npy')
         # init_pointclouds = np.load(pc_path)
         # self.init_pointclouds = torch.tensor(init_pointclouds).float()
 
@@ -231,12 +231,21 @@ class MVSSystem(LightningModule):
         zfar = 100.0
         znear = 0.01
         rays, rgbs_target, R, T, mask, FovX, FovY = self.decode_batch(batch)
-        scan = batch['scan']
-        light_idx = batch['light_idx']
-        pair_idx = batch['src_views']
-        scan = scan[0]
-        # print('during train step, scan, light_idx, pair_idx',scan, light_idx, pair_idx)
-        src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=self.device)
+        if 'scan' in batch:
+            # DTU dataset
+            scan = batch['scan']
+            light_idx = batch['light_idx']
+            pair_idx = batch['src_views']
+            scan = scan[0]
+            # print('during train step, scan, light_idx, pair_idx',scan, light_idx, pair_idx)
+
+            src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=self.device)
+        elif 'obj_idx' in batch:
+            # Google scanned object
+            scan = batch['obj_name'][0]
+            src_imgs, proj_mats, _, pose_source = self.train_dataset.read_source_views(batch['obj_idx'].item(), pair_idx=batch['src_views'],device=self.device)
+            near_far_source = batch['near_far'][0]
+        
         H,W = src_imgs.shape[-2:]
         # print('during train step,',H,W)
         if self.args.multi_volume:
@@ -283,7 +292,7 @@ class MVSSystem(LightningModule):
         #                 lindisp=args.use_disp, perturb=args.perturb) ##provide the xyz_coordinates in world system
         
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        pc_path = os.path.join(self.train_dataset.root_dir,f'Pointclouds10/{scan}_pointclouds.npy')
+        pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'Pointclouds10/{scan}_pointclouds.npy')
         init_pointclouds = np.load(pc_path)
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
@@ -397,13 +406,21 @@ class MVSSystem(LightningModule):
             self.MVSNet.train() #hanxue
         rays, img, R, T, mask, FovX, FovY = self.decode_batch(batch)
 
-        scan = batch['scan']
-        light_idx = batch['light_idx']
-        pair_idx = batch['src_views']
-        scan = scan[0]
-        # print('during train step, scan, light_idx, pair_idx',scan, light_idx, pair_idx)
+        if 'scan' in batch:
+            # DTU dataset
+            scan = batch['scan']
+            light_idx = batch['light_idx']
+            pair_idx = batch['src_views']
+            scan = scan[0]
+            # print('during train step, scan, light_idx, pair_idx',scan, light_idx, pair_idx)
 
-        src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=self.device)
+            src_imgs, proj_mats, near_far_source, pose_source = self.train_dataset.read_source_views(scan, light_idx=light_idx, pair_idx=pair_idx,device=self.device)
+        elif 'obj_idx' in batch:
+            # Google scanned object
+            scan = batch['obj_name'][0]
+            src_imgs, proj_mats, _, pose_source = self.train_dataset.read_source_views(batch['obj_idx'].item(), pair_idx=batch['src_views'],device=self.device)
+            near_far_source = batch['near_far'][0]
+
         if self.args.multi_volume:
             volume_feature = []
             for i in range(len(self.MVSNet)):
@@ -443,7 +460,7 @@ class MVSSystem(LightningModule):
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        pc_path = os.path.join(self.val_dataset.root_dir,f'Pointclouds10/{scan}_pointclouds.npy')
+        pc_path = os.path.join(self.val_dataset.pointcloud_dir,f'Pointclouds10/{scan}_pointclouds.npy')
         init_pointclouds = np.load(pc_path)
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds

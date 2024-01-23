@@ -28,7 +28,7 @@ def config_parser(cmd=None):
     parser.add_argument("--alpha_feat_dim", type=int, default=8)
     parser.add_argument('--net_type', type=str, default='v0')
     parser.add_argument('--dataset_name', type=str, default='blender',
-                        choices=['dtu', 'blender', 'llff', 'dtu_ft','scannet','dtu_ft_gs','dtu_gs'])
+                        choices=['dtu', 'blender', 'llff', 'dtu_ft','scannet','dtu_ft_gs','dtu_gs', 'google_scan_gs'])
     parser.add_argument('--use_color_volume', default=False, action="store_true",
                         help='project colors into a volume without indexing from image everytime')
     parser.add_argument('--use_density_volume', default=False, action="store_true",
