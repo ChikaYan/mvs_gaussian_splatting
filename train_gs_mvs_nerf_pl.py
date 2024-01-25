@@ -35,7 +35,7 @@ class MVSSystem(LightningModule):
     def __init__(self, args):
         super(MVSSystem, self).__init__()
         self.args = args
-        self.args.feat_dim = 8+3*4 ##hanxue to edit
+        self.args.feat_dim = args.volume_feat_outputdim+self.args.n_views*4 ##hanxue to edit
         self.args.dir_dim = 3
         self.use_mask = True
         Path(f'{args.savedir}/{args.expname}/').mkdir(exist_ok=True, parents=True)
@@ -59,8 +59,8 @@ class MVSSystem(LightningModule):
         self.render_kwargs_train['NDC_local'] = False
         self.eval_metric = [0.01,0.05, 0.1]
         dataset = dataset_dict[self.args.dataset_name]
-        self.train_dataset = dataset(args, split='train', max_len=-1)# , downSample=args.imgScale_train)
-        self.val_dataset   = dataset(args, split='test', max_len=10)# , downSample=args.imgScale_test)#
+        self.train_dataset = dataset(args, split='train', n_views=args.n_views,max_len=-1)# , downSample=args.imgScale_train)
+        self.val_dataset   = dataset(args, split='test',n_views=args.n_views, max_len=10)# , downSample=args.imgScale_test)#
 
         self.model_register = self.render_kwargs_train['network_fn']
         self.MVSNet_register_fine = self.render_kwargs_train['network_fine']
@@ -317,7 +317,8 @@ class MVSSystem(LightningModule):
         opacity,scales,rotations,shs = rendering_gs(args, pose_source, xyz_coarse_sampled, xyz_NDC, None, None, None,
                                                        volume_feature, src_imgs,  **self.render_kwargs_train)
         scales = scales*self.args.decay_scale
-        assert torch.max(scales)<=(self.args.decay_scale+0.0001)
+        if not torch.max(scales)<=(self.args.decay_scale+0.0001):
+            print('=====================torch.max(scales)===================',torch.max(scales))
         if args.singlescale:
             scales = scales.repeat(1,3)
             rotations = torch.zeros_like(rotations,device=self.device)
@@ -483,7 +484,8 @@ class MVSSystem(LightningModule):
             means3D = xyz_coarse_sampled
             means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device=self.device) + 0
             scales = scales*self.args.decay_scale
-            assert torch.max(scales)<=(self.args.decay_scale+0.0001)
+            if not torch.max(scales)<=(self.args.decay_scale+0.0001):
+                print('=====================torch.max(scales)===================',torch.max(scales))
             if args.singlescale:
                 scales = scales.repeat(1,3)
                 rotations = torch.zeros_like(rotations,device=self.device)

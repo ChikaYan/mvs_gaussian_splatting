@@ -52,34 +52,37 @@ class DTU_gs(Dataset):
 
         # light conditions 0-6 for training
         # light condition 3 for testing (the brightest?)
-        light_idxs = [3]
-        # light_idxs = [3] if 'train' != self.split else range(7) ##hanxue
+        
+        # change to random views
+        # light_idxs = [3]
+        light_idxs = [3] if ('train' != self.split or self.args.multi_volume) else range(7) ##hanxue
 
-        ##hanxue
-        self.id_list = []
-        for scan in self.scans:
-            with open(f'configs/dtu_pairs.txt') as f:
-                num_viewpoint = int(f.readline())
-                # viewpoints (49)
-                for ref_view in range(num_viewpoint):
-                    src_views = [25,0,48] 
-                    for light_idx in light_idxs:
-                        self.metas += [(scan, light_idx, [ref_view], src_views)]
-                        self.id_list.append([ref_view] + src_views)
-        print('len(self.metas),self.metas[0]',len(self.metas),self.metas[0])
-        print('len(self.metas),self.metas[5]',len(self.metas),self.metas[5])
-
+        # ##hanxue
         # self.id_list = []
         # for scan in self.scans:
         #     with open(f'configs/dtu_pairs.txt') as f:
         #         num_viewpoint = int(f.readline())
         #         # viewpoints (49)
-        #         for _ in range(num_viewpoint):
-        #             ref_view = int(f.readline().rstrip())
-        #             src_views = [int(x) for x in f.readline().rstrip().split()[1::2]]
+        #         for ref_view in range(num_viewpoint):
+        #             src_views = [25,0,48] 
         #             for light_idx in light_idxs:
-        #                 self.metas += [(scan, light_idx, ref_view, src_views)]
+        #                 self.metas += [(scan, light_idx, [ref_view], src_views)]
         #                 self.id_list.append([ref_view] + src_views)
+        # print('len(self.metas),self.metas[0]',len(self.metas),self.metas[0])
+        # print('len(self.metas),self.metas[5]',len(self.metas),self.metas[5])
+        
+        # change to random views
+        self.id_list = []
+        for scan in self.scans:
+            with open(f'configs/dtu_pairs.txt') as f:
+                num_viewpoint = int(f.readline())
+                # viewpoints (49)
+                for _ in range(num_viewpoint):
+                    ref_view = int(f.readline().rstrip())
+                    src_views = [int(x) for x in f.readline().rstrip().split()[1::2]]
+                    for light_idx in light_idxs:
+                        self.metas += [(scan, light_idx, [ref_view], src_views)]
+                        self.id_list.append([ref_view] + src_views)
         #             # metas[0]
         #             # ('scan3', 0, 0, [10, 1, 9, 12, 11, 13, 2, 8, 14, 27])
         #             # metas[1]
@@ -220,6 +223,15 @@ class DTU_gs(Dataset):
         w, h = self.img_wh
         sample = {}
         scan, light_idx, target_view, src_views = self.metas[idx]
+        if self.split=='train':
+            if self.n_views>3:
+                ids = torch.randperm(10)[:self.n_views]
+                src_views = [src_views[i] for i in ids]
+            else:
+                ids = torch.randperm(5)[:3]
+                src_views = [src_views[i] for i in ids]
+        else:
+            src_views = [src_views[i] for i in range(self.n_views)]
 
         target_rays = []
         target_rgbs = []

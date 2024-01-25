@@ -145,9 +145,9 @@ def gen_pts_feats_gs(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, feat_di
     # print('get pts feats gs',rays_ndc.shape)
     if not use_color_volume:
         input_feat = torch.empty((N_samples, feat_dim), device=imgs.device, dtype=torch.float)
-        ray_feats = index_point_feature_gs(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)
-        # print('ray_feats.shape,',ray_feats.shape)
+        ray_feats = index_point_feature_gs(volume_feature, rays_ndc) if torch.is_tensor(volume_feature) else volume_feature(rays_ndc)        
         ray_feats = ray_feats.squeeze()
+        # print(ray_feats.shape,volume_feat_outputdim,input_feat.shape,volume_feature.shape)
         input_feat[..., :volume_feat_outputdim] = ray_feats
         colors = build_color_volume(rays_pts, pose_ref, imgs, img_feat, with_mask=True, downscale=img_downscale)
         input_feat[..., volume_feat_outputdim:] = colors.squeeze()
@@ -203,9 +203,15 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
         assert len(volume_feature)==len(network_fn)
         raws = []
         for i in range(len(volume_feature)):
+            if i==len(volume_feature)-1:
+                volume_feat_outputdim = args.volume_feat_outputdim
+                feat_dim = args.feat_dim
+            else:
+                volume_feat_outputdim=8
+                feat_dim = 8+args.n_views*4
             # rays_pts
-            input_feat = gen_pts_feats_gs(imgs, volume_feature[i], rays_pts, pose_ref, rays_ndc, args.feat_dim, \
-                                    img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=args.volume_feat_outputdim)
+            input_feat = gen_pts_feats_gs(imgs, volume_feature[i], rays_pts, pose_ref, rays_ndc, feat_dim, \
+                                    img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=volume_feat_outputdim)
             ### point wise feature extracted from cost volumn(8)+4(rgb+mask)*numviews
             # rays_ndc = rays_ndc * 2 - 1.0
             raw = network_query_fn(rays_ndc, None, input_feat, network_fn[i])
