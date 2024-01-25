@@ -38,8 +38,8 @@ class DTU_ft_gs(Dataset):
 
         self.pair_idx = torch.load('configs/pairs.th')
         # self.pair_idx = [self.pair_idx['dtu_train'],self.pair_idx['dtu_test']]
-        dtu_train = [item for item in range(49) if item not in self.pair_idx['dtu_test'] and item not in [0,25,48]]
-        dtu_train = [0,25,48]+dtu_train
+        dtu_train = [item for item in range(49) if item not in self.pair_idx['dtu_test'] and item not in [25,0,48]]
+        dtu_train = [25,0,48]+dtu_train
         self.pair_idx = [dtu_train,self.pair_idx['dtu_test']]
         self.bbox_3d = torch.tensor([[-1.0, -1.0, 2.2], [1.0, 1.0, 4.2]])
         self.near_far = [2.125, 4.525]
@@ -167,7 +167,7 @@ class DTU_ft_gs(Dataset):
         self.all_FovY = []
         self.all_mask = []
 
-        for idx in self.img_idx[:1]:
+        for idx in self.img_idx:
             proj_mat_filename = os.path.join(self.root_dir, f'Cameras/train/{idx:08d}_cam.txt')
             intrinsic, w2c, near_far = self.read_cam_file(proj_mat_filename)
             c2w = np.linalg.inv(w2c)

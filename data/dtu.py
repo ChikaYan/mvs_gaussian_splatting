@@ -20,7 +20,7 @@ def colorjitter(img, factor):
 
 
 class MVSDatasetDTU(Dataset):
-    def __init__(self, root_dir, split, n_views=3, levels=1, img_wh=None, downSample=1.0, max_len=-1):
+    def __init__(self, root_dir, split, n_views=3, levels=1, img_wh=None, downSample=1.0, max_len=-1, **kwargs):
         """
         img_wh should be set to a tuple ex: (1152, 864) to enable test mode!
         """

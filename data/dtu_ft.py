@@ -30,8 +30,8 @@ class DTU_ft(Dataset):
 
         self.pair_idx = torch.load('configs/pairs.th')
         # self.pair_idx = [self.pair_idx['dtu_train'],self.pair_idx['dtu_test']]
-        dtu_train = [item for item in range(49) if item not in self.pair_idx['dtu_test'] and item not in [0,25,48]]
-        dtu_train = [0,25,48]+dtu_train
+        dtu_train = [item for item in range(49) if item not in self.pair_idx['dtu_test'] and item not in [25,0,48]]
+        dtu_train = [25,0,48]+dtu_train
         self.pair_idx = [dtu_train,self.pair_idx['dtu_test']]
         self.bbox_3d = torch.tensor([[-1.0, -1.0, 2.2], [1.0, 1.0, 4.2]])
         self.near_far = [2.125, 4.525]

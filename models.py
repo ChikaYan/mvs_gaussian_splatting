@@ -1,5 +1,5 @@
 import torch
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 import torch.nn as nn
 from utils import *
 from utils import homo_warp
@@ -650,7 +650,8 @@ class Renderer_gs(nn.Module):
                 h = torch.cat([input_pts, h], -1)
         if self.output_dim is None:
             opacity = self.opacity_activation(self.opacity_linear(h))
-            scales = self.scaling_activation(self.scale_linear(h))
+            pre_scales = self.scale_linear(h)
+            scales = self.scaling_activation(pre_scales)
             rotation = self.rotation_activation(self.rotation_linear(h))
             feature_ds = self.feat_ds_linear(h)
             features_rest = self.feat_rest_linear(h)
@@ -760,11 +761,16 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
             if i==1:
                 model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
                         input_ch_pts=input_ch, skips=skips,
-                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i],scale=True).to(device))
-            else:
+                        input_ch_views=input_ch_views, input_ch_feat=8+args.n_views*4, net_type=args.net_type,output_dim=output_dims[i],scale=True).to(device))
+            elif i==3:
                 model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
                         input_ch_pts=input_ch, skips=skips,
                         input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i]).to(device))
+            else:
+                model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
+                        input_ch_pts=input_ch, skips=skips,
+                        input_ch_views=input_ch_views, input_ch_feat=8+args.n_views*4, net_type=args.net_type,output_dim=output_dims[i]).to(device))
+            
     else:
         model = MVSNeRF(D=args.netdepth, W=args.netwidth,
                     input_ch_pts=input_ch, skips=skips,
@@ -802,15 +808,15 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
 
     EncodingNet = None
     if use_mvs:
-        if args.multi_volume and args.dataset_name=='dtu_gs':
+        if args.multi_volume:
             EncodingNet=[]
-            for i in range(len(model)):
-                EncodingNet.append(MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device))
+            for i in range(len(model)-1):
+                EncodingNet.append(MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=8).to(device))
+            EncodingNet.append(MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device))
                 # grad_vars += list(EncodingNet[i].parameters()) #hanxue
         else:
             EncodingNet = MVSNet(depth_res=args.depth_res,featurenet_outputdim=args.featurenet_outputdim,n_views=args.n_views,volume_feat_outputdim=args.volume_feat_outputdim).to(device)
-            if args.dataset_name!='dtu_ft_gs':
-                grad_vars += list(EncodingNet.parameters())    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            grad_vars += list(EncodingNet.parameters())
 
     start = 0
 
@@ -1183,6 +1189,7 @@ class MVSNet(nn.Module):
 
         depth_values = depth_values.unsqueeze(0)
         # volume_feat, in_masks = self.build_volume_costvar(feats_l, proj_mats, depth_values, pad=pad)
+        # print(imgs.shape, feats_l.shape, proj_mats.shape, depth_values.shape)
         volume_feat, in_masks = self.build_volume_costvar_img(imgs, feats_l, proj_mats, depth_values, pad=pad)
         if return_color:
             feats_l = torch.cat((volume_feat[:,:V*3].view(B, V, 3, *volume_feat.shape[2:]),in_masks.unsqueeze(2)),dim=2)
