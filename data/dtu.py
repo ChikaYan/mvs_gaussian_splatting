@@ -53,7 +53,7 @@ class MVSDatasetDTU(Dataset):
         self.metas = []
         with open(f'configs/lists/dtu_{self.split}_all.txt') as f:
             self.scans = [line.rstrip() for line in f.readlines()]
-
+            print('=============num of scanes==========',f'configs/lists/dtu_{self.split}_all.txt',len(self.scans))
         # light conditions 0-6 for training
         # light condition 3 for testing (the brightest?)
         light_idxs = [3] if 'train' != self.split else range(7)
@@ -70,6 +70,7 @@ class MVSDatasetDTU(Dataset):
                     for light_idx in light_idxs:
                         self.metas += [(scan, light_idx, ref_view, src_views)]
                         self.id_list.append([ref_view] + src_views)
+                    # print('ref_view',ref_view)
                     # metas[0]
                     # ('scan3', 0, 0, [10, 1, 9, 12, 11, 13, 2, 8, 14, 27])
                     # metas[1]
@@ -78,6 +79,10 @@ class MVSDatasetDTU(Dataset):
                     # [0, 10, 1, 9, 12, 11, 13, 2, 8, 14, 27]
                     # id_list[1]
                     # [0, 10, 1, 9, 12, 11, 13, 2, 8, 14, 27]
+        if self.split!='train':
+            ##### as val set has 1519 views, I reduce it to 152 for faster validation result check
+            self.metas=self.metas[::10]
+            self.id_list=self.id_list[::10]
         self.id_list = np.unique(self.id_list) # range(49)
         self.build_remap()
 

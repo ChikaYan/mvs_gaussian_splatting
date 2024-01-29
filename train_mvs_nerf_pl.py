@@ -132,8 +132,10 @@ class MVSSystem(LightningModule):
         dataset = dataset_dict[self.args.dataset_name]
         train_dir, val_dir = self.args.datadir , self.args.datadir
         self.train_dataset = dataset(root_dir=train_dir, split='train', n_views=args.n_views, max_len=-1, downSample=args.imgScale_train)
-        self.val_dataset   = dataset(root_dir=val_dir, split='test', n_views=args.n_views,max_len=10, downSample=args.imgScale_test)#
-
+        if self.args.val_only:
+            self.val_dataset   = dataset(root_dir=val_dir, split='test', n_views=args.n_views,max_len=-1, downSample=args.imgScale_test)#
+        else:
+            self.val_dataset   = dataset(root_dir=val_dir, split='test', n_views=args.n_views,max_len=10, downSample=args.imgScale_test)#
 
     def configure_optimizers(self):
         eps = 1e-7
@@ -142,24 +144,30 @@ class MVSSystem(LightningModule):
         return [self.optimizer], [scheduler]
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset,
+        traindataloader = DataLoader(self.train_dataset,
                           shuffle=True,
                           num_workers=8,
                           batch_size=1,
                           pin_memory=True)
+        print('======================length of train dataloader is:',len(traindataloader))
+        return traindataloader
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset,
+        valdataloader = DataLoader(self.val_dataset,
                           shuffle=False,
                           num_workers=1,
                           batch_size=1,
                           pin_memory=True)
+        print('======================length of val dataloader is:',len(valdataloader))
+        return valdataloader
 
     def training_step(self, batch, batch_nb):
         if 'scan' in batch.keys():
             batch.pop('scan')
         log, loss = {},0
         data_mvs, pose_ref = self.decode_batch(batch)
+        # print('pose_ref',pose_ref['w2cs'].shape,pose_ref['intrinsics'].shape,pose_ref['c2ws'].shape,pose_ref['near_fars'].shape)
+        # torch.Size([4, 4, 4]) torch.Size([4, 3, 3]) torch.Size([4, 4, 4]) torch.Size([4, 2])
         imgs, proj_mats = data_mvs['images'], data_mvs['proj_mats']
         near_fars, depths_h = data_mvs['near_fars'], data_mvs['depths_h']
         # print('imgs',imgs.shape,proj_mats.shape,near_fars.shape)
@@ -249,6 +257,7 @@ class MVSSystem(LightningModule):
             volume_feature, img_feat, _ = self.MVSNet(imgs[:, :self.args.n_views], proj_mats[:, :self.args.n_views], near_fars[0], pad=args.pad)
             imgs = self.unpreprocess(imgs)
             rgbs, depth_preds = [],[]
+            # print('tgt_to_world',tgt_to_world)
             for chunk_idx in range(H*W//args.chunk + int(H*W%args.chunk>0)):
 
 
@@ -276,8 +285,16 @@ class MVSSystem(LightningModule):
             else:
                 log['val_psnr'] = mse2psnr(torch.mean(img_err_abs**2))
             os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
-            np.save(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:03d}.npy',depth_r)
-            imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/rgb_{self.global_step:08d}_{self.idx:03d}.png',(rgb.permute(1,2,0).numpy()*255).astype('uint8'))
+            if not args.nosave:
+                if args.val_only:
+                    os.makedirs(f'{self.savedir}/{self.args.expname}/val_only',exist_ok=True)
+                    val_rgb_path = f'{self.savedir}/{self.args.expname}/val_only/rgb_{self.global_step:08d}_{self.idx:03d}.png'
+                    depth_path= f'{self.savedir}/{self.args.expname}/val_only/{self.global_step:08d}_{self.idx:03d}.npy'
+                    np.save(depth_path,depth_r)
+                    imageio.imwrite(val_rgb_path,(rgb.permute(1,2,0).numpy()*255).astype('uint8'))
+                else:
+                    np.save(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:03d}.npy',depth_r)
+                    imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/rgb_{self.global_step:08d}_{self.idx:03d}.png',(rgb.permute(1,2,0).numpy()*255).astype('uint8'))
             if self.args.with_depth:
                 rmse = (depth_r[mask] - depth_gt_render[mask])**2
                 rmse = torch.sqrt(rmse.sum()/mask.sum())#.item()
@@ -309,10 +326,12 @@ class MVSSystem(LightningModule):
             img_vis = torch.cat((imgs, torch.stack((rgb, img_err_abs.cpu()*5))), dim=0) # N 3 H W
             self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.global_step)
 
-            
-            img_vis = torch.cat((img_vis,depth_pred_r_[None]),dim=0).permute(2,0,3,1).reshape(img_vis.shape[2],-1,3).numpy()
-
-            imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
+            if not args.nosave:
+                img_vis = torch.cat((img_vis,depth_pred_r_[None]),dim=0).permute(2,0,3,1).reshape(img_vis.shape[2],-1,3).numpy()
+                if args.val_only:
+                    imageio.imwrite(f'{self.savedir}/{self.args.expname}/val_only/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
+                else:
+                    imageio.imwrite(f'{self.savedir}/{self.args.expname}/{self.args.expname}/{self.global_step:08d}_{self.idx:02d}.png', (img_vis*255).astype('uint8'))
             self.idx += 1
         print('psnr, ssim, lpips, depth_abs_rel, depth_rmse',\
               log['val_psnr'],log['val_ssim'],log['val_lpips'],log['val_depth_abs_rel'],log['val_depth_rmse'])
@@ -334,14 +353,26 @@ class MVSSystem(LightningModule):
         mean_lpips = torch.stack([x['val_lpips'] for x in outputs]).mean()
         mean_depth_abs_rel = torch.stack([x['val_depth_abs_rel'] for x in outputs]).mean()
         mean_depth_rmse = torch.stack([x['val_depth_rmse'] for x in outputs]).mean()
-        print('mean_psnr,mean_ssim,mean_lpips,mean_depth_abs_rel,mean_depth_rmse',\
-              mean_psnr,mean_ssim,mean_lpips,mean_depth_abs_rel,mean_depth_rmse)
+        # print('mean_psnr,mean_ssim,mean_lpips,mean_depth_abs_rel,mean_depth_rmse',\
+        #       mean_psnr,mean_ssim,mean_lpips,mean_depth_abs_rel,mean_depth_rmse)
         self.log('val/d_loss_r', mean_d_loss_r, prog_bar=False)
         self.log('val/PSNR', mean_psnr, prog_bar=False)
+        self.log('val/ssim', mean_ssim, prog_bar=False)
+        self.log('val/lpips', mean_lpips, prog_bar=False)
         self.log('val/abs_err', mean_abs_err, prog_bar=False)
         self.log(f'val/acc_{self.eval_metric[0]}mm', mean_acc_1mm, prog_bar=False)
         self.log(f'val/acc_{self.eval_metric[1]}mm', mean_acc_2mm, prog_bar=False)
         self.log(f'val/acc_{self.eval_metric[2]}mm', mean_acc_4mm, prog_bar=False)
+        if args.val_only:
+            metric_path = f'{self.savedir}/{self.args.expname}/val_only_metrics.txt'
+        else:
+            metric_path = f'{self.savedir}/{self.args.expname}/metrics.txt'
+        with open(metric_path, 'a') as f:
+            f.write('iter:'+str(self.global_step)+'\n') 
+            f.write('num_testimages:'+str(len([x['val_psnr'] for x in outputs]))+'\n') 
+            f.write('val/psnr:'+str(mean_psnr)+'\n') 
+            f.write('val/ssim:'+str(mean_ssim)+'\n')
+            f.write('val/lpips:'+str(mean_lpips)+'\n')
 
         return
 

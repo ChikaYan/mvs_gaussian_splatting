@@ -49,7 +49,7 @@ def read_depth(filename):
                             interpolation=cv2.INTER_NEAREST)  # !!!!!!!!!!!!!!!!!!!!!!!!!
 
     return depth_h
-root_dir = '/anfs/gfxdisp/hanxue_nerf_data/data/dtu'
+root_dir = '/rds/project/rds-JDeuXlFW9KE/data/dtu'
 with open(f'configs/lists/dtu_train_all.txt') as f:
     scanlist = [line.rstrip() for line in f.readlines()]
 with open(f'configs/lists/dtu_test_all.txt') as f:
@@ -64,6 +64,7 @@ for scan in scanlist:
         c2w = np.linalg.inv(w2c)
         c2w = torch.FloatTensor(c2w)
         intrinsic[:2] *= 4 # * the provided intrinsics is 4x downsampled, now keep the same scale with image
+        print(intrinsic)
         center = [intrinsic[0,2], intrinsic[1,2]]
         focal = [intrinsic[0,0], intrinsic[1,1]]
         directions = get_ray_directions(h, w, focal, center)  # (h, w, 3)
@@ -82,11 +83,11 @@ for scan in scanlist:
             mask = depth>0
             point_samples = rays_o.numpy()[mask] + np.expand_dims(depth[mask],-1) * rays_d.numpy()[mask]
             pointclouds.append(np.concatenate([point_samples,rgb_numpy[mask]],axis=-1))
-    if len(pointclouds)!=0:
-        pointclouds = np.vstack(pointclouds)
-        pointclouds = pointclouds[::5]
-        file = os.path.join(root_dir,f'Pointclouds5/{scan}_pointclouds.npy')
-        print(file)
-        np.save(file, pointclouds)
-        init_pointclouds = torch.tensor(pointclouds).float()
-        print('init_pointclouds shape',init_pointclouds.shape) #114 [220212, 6]
+    # if len(pointclouds)!=0:
+    #     pointclouds = np.vstack(pointclouds)
+    #     pointclouds = pointclouds[::5]
+    #     file = os.path.join(root_dir,f'Pointclouds5/{scan}_pointclouds.npy')
+    #     print(file)
+    #     np.save(file, pointclouds)
+    #     init_pointclouds = torch.tensor(pointclouds).float()
+    #     print('init_pointclouds shape',init_pointclouds.shape) #114 [220212, 6]

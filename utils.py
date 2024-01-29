@@ -270,6 +270,7 @@ def build_rays_test(H,W, tgt_to_world, world_to_ref, intrinsic, near_fars_ref, n
     rays_os, rays_ds = [],[]
 
     intrinsic_render =  intrinsic if intrinsic.dim()==2 else intrinsic.mean(0)
+    
     rays_o, rays_d, pixel_coordinates = get_rays_mvs(H, W, intrinsic_render, tgt_to_world, isRandom=False, chunk=chunk, idx=idx)
     ray_samples = H * W if chunk < 0 else pixel_coordinates.shape[-1]
 
