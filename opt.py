@@ -109,6 +109,8 @@ def config_parser(cmd=None):
                         help='log2 of max freq for positional encoding (2D direction)')
     parser.add_argument("--volume_feat_outputdim", type=int, default=8,
                         help='log2 of max freq for positional encoding (2D direction)')
+    parser.add_argument("--nosave", action='store_true',
+                        help='whether save images during validation')
 
 
 

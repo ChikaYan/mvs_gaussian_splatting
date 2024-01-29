@@ -43,8 +43,10 @@ def batchify(fn, chunk):
 def run_network_mvs(pts, viewdirs, alpha_feat, fn, embed_fn, embeddirs_fn, netchunk=1024):
     """Prepares inputs and applies network 'fn'.
     """
-    # print('when run network mvs',pts.shape, viewdirs.shape, alpha_feat.shape)  
+    # print('when run network mvs',pts.shape,  alpha_feat.shape)  
     # torch.Size([1024, 128, 3]) torch.Size([1024, 3]) torch.Size([1024, 128, 20])
+
+    # torch.Size([1394568, 3]) torch.Size([327680, 3]) torch.Size([1394568, 20])
     if embed_fn is not None:
         pts = embed_fn(pts)
 
@@ -52,9 +54,10 @@ def run_network_mvs(pts, viewdirs, alpha_feat, fn, embed_fn, embeddirs_fn, netch
         pts = torch.cat((pts,alpha_feat), dim=-1)
 
     if viewdirs is not None:
-        if viewdirs.dim()!=3:
+        if viewdirs.dim()!=3 and pts.dim()==3:
             viewdirs = viewdirs[:, None].expand(-1,pts.shape[1],-1)
-
+        # print('embeddirs_fn',embeddirs_fn,pts.shape,viewdirs.shape)
+        # None torch.Size([1024, 128, 83]) torch.Size([1024, 128, 3])
         if embeddirs_fn is not None:
             viewdirs = embeddirs_fn(viewdirs)
         pts = torch.cat([pts, viewdirs], -1)
@@ -167,7 +170,8 @@ def rendering(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, rays
         angle = gen_dir_feature(pose_ref['w2cs'][0], rays_dir/cos_angle.unsqueeze(-1))  # view dir feature
     else:
         angle = rays_dir/cos_angle.unsqueeze(-1)
-
+    # print('cos_angle',cos_angle.shape, pose_ref['w2cs'][0].shape,angle.shape) 
+    #torch.Size([1024]) torch.Size([4, 4]) torch.Size([1024, 3])
     # rays_pts
     input_feat = gen_pts_feats(imgs, volume_feature, rays_pts, pose_ref, rays_ndc, args.feat_dim, \
                                img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=args.volume_feat_outputdim)
@@ -190,14 +194,17 @@ def rendering(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, rays
 
 def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, rays_dir,
               volume_feature=None, imgs=None, network_fn=None, img_feat=None, network_query_fn=None, white_bkgd=False, **kwargs):
-
-    # # rays angle
-    # cos_angle = torch.norm(rays_dir, dim=-1)
-    # # using direction
-    # if pose_ref is not None:
-    #     angle = gen_dir_feature(pose_ref['w2cs'][0], rays_dir/cos_angle.unsqueeze(-1))  # view dir feature
-    # else:
-    #     angle = rays_dir/cos_angle.unsqueeze(-1)
+    angle = None
+    if (rays_o is not None) and (rays_dir is not None):
+        # rays angle
+        cos_angle = torch.norm(rays_dir, dim=-1)
+        # using direction
+        if pose_ref is not None:
+            angle = gen_dir_feature(pose_ref['w2cs'][0], rays_dir/cos_angle.unsqueeze(-1))  # view dir feature
+        else:
+            angle = rays_dir/cos_angle.unsqueeze(-1)
+        # print('cos_angle',cos_angle.shape, pose_ref['w2cs'][0].shape,angle.shape) 
+        # cos_angle torch.Size([327680]) torch.Size([4, 4]) torch.Size([327680, 3])
     if isinstance(volume_feature, list) and isinstance(network_fn, nn.ModuleList):
         # print('during rendering we use multi_volume')
         assert len(volume_feature)==len(network_fn)
@@ -214,7 +221,7 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
                                     img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=volume_feat_outputdim)
             ### point wise feature extracted from cost volumn(8)+4(rgb+mask)*numviews
             # rays_ndc = rays_ndc * 2 - 1.0
-            raw = network_query_fn(rays_ndc, None, input_feat, network_fn[i])
+            raw = network_query_fn(rays_ndc, angle, input_feat, network_fn[i])
             # print('shape of raw output',raw.shape)
             raws.append(raw)
         opacity,scales,rotation,feature_ds,feature_rest = raws[0],raws[1],raws[2],raws[3][:,:3],raws[3][:,3:].reshape(-1,15,3)
@@ -225,7 +232,7 @@ def rendering_gs(args, pose_ref, rays_pts, rays_ndc, depth_candidates, rays_o, r
                                 img_feat, args.img_downscale, args.use_color_volume, args.net_type,volume_feat_outputdim=args.volume_feat_outputdim)
         ### point wise feature extracted from cost volumn(8)+4(rgb+mask)*numviews
         # rays_ndc = rays_ndc * 2 - 1.0
-        raw = network_query_fn(rays_ndc, None, input_feat, network_fn)
+        raw = network_query_fn(rays_ndc, angle, input_feat, network_fn)
         opacity,scales,rotation,feature_ds,feature_rest = raw[:,:1],raw[:,1:4],raw[:,4:8],raw[:,8:11],raw[:,11:].reshape(-1,15,3)
         # print('shape of opacity,scales,rotation,feature',opacity.shape,scales.shape,rotation.shape,feature.shape)
         return opacity,scales,rotation,torch.cat((torch.unsqueeze(feature_ds, 1), feature_rest), dim=1)

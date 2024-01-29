@@ -207,7 +207,7 @@ class Renderer_ours(nn.Module):
     def forward(self, x):
         dim = x.shape[-1]
         in_ch_feat = dim-self.in_ch_pts-self.in_ch_views
-        # print('several feature dims',x.shape,self.in_ch_pts, in_ch_feat, self.in_ch_views) #63 20 3
+        # print('several feature dims',x.shape,self.in_ch_pts, in_ch_feat, self.in_ch_views) #torch.Size([1024, 128, 86]) 63 20 3
         input_pts, input_feats, input_views = torch.split(x, [self.in_ch_pts, in_ch_feat, self.in_ch_views], dim=-1)
         # print('input_pts shape,',input_pts.shape, input_feats.shape, input_views.shape) \
         # torch.Size([1024, 128, 63]) torch.Size([1024, 128, 20]) torch.Size([1024, 128, 3])
@@ -557,7 +557,7 @@ class Renderer_linear(nn.Module):
 
 
 class Renderer_gs(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, input_ch_feat=8, skips=[4], use_viewdirs=False,output_dim = None,scale=False):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, input_ch_feat=8, skips=[4], use_viewdirs=False,output_dim = None,scale=False,args=None):
         """
         """
         super(Renderer_gs, self).__init__()
@@ -570,19 +570,24 @@ class Renderer_gs(nn.Module):
         self.in_ch_pts, self.in_ch_views, self.in_ch_feat = input_ch, input_ch_views, input_ch_feat
         self.output_dim = output_dim
         self.scale = scale
+        self.scaling_activation = torch.sigmoid
+        self.scaling_inverse_activation = torch.log
+        self.opacity_activation = torch.sigmoid
+        self.args=args
 
         self.pts_linears = nn.ModuleList(
             [nn.Linear(self.in_ch_pts, W, bias=True)] + [nn.Linear(W, W, bias=True) if i not in self.skips else nn.Linear(W + self.in_ch_pts, W) for i in range(D-1)])
         self.pts_bias = nn.Linear(input_ch_feat, W)
         
-        # self.scaling_activation = torch.exp
-        self.scaling_activation = torch.sigmoid
-        self.scaling_inverse_activation = torch.log
-        # self.covariance_activation = build_covariance_from_scaling_rotation
-        self.opacity_activation = torch.sigmoid
-        # self.inverse_opacity_activation = inverse_sigmoid
+        
         self.rotation_activation = torch.nn.functional.normalize
         self.pts_linears.apply(weights_init)
+
+        if self.use_viewdirs:
+            self.feature_linear = nn.Linear(W, W)
+            self.views_linears_ = nn.ModuleList([nn.Linear(input_ch_views + W, W)]+[nn.Linear(W, W)])
+            self.views_linears_.apply(weights_init)
+            self.feature_linear.apply(weights_init)
         if self.output_dim is None:
             self.opacity_linear = nn.Linear(W, 1)
             self.scale_linear = nn.Linear(W, 3)
@@ -596,9 +601,13 @@ class Renderer_gs(nn.Module):
             self.feat_ds_linear.apply(weights_init)
             self.feat_rest_linear.apply(weights_init)
         else:
+            if self.use_viewdirs:
+                assert self.output_dim==48
             if self.output_dim==48:
-                self.output_liners = nn.ModuleList(
-                [nn.Linear(self.W, W, bias=True) for i in range(2)])
+                if not self.use_viewdirs:
+                    self.output_liners = nn.ModuleList(
+                        [nn.Linear(self.W, W, bias=True) for i in range(2)])
+                    self.output_liners.apply(weights_init)
                 self.feat_ds_linear = nn.Linear(W,3)
                 self.feat_rest_linear = nn.Linear(W,45)
                 self.feat_ds_linear.apply(weights_init)
@@ -606,7 +615,8 @@ class Renderer_gs(nn.Module):
             else:
                 self.output_liners = nn.ModuleList(
                 [nn.Linear(self.W, W, bias=True) for i in range(2)] + [nn.Linear(W, self.output_dim, bias=True)])
-            self.output_liners.apply(weights_init)
+                self.output_liners.apply(weights_init)
+            
         # if use_viewdirs:
         #     self.feature_linear = nn.Linear(W, W)
         #     self.alpha_linear = nn.Linear(W, 1)
@@ -635,12 +645,21 @@ class Renderer_gs(nn.Module):
     #     alpha = torch.relu(self.alpha_linear(h))
     #     return alpha
     def forward(self, x):
+        
         dim = x.shape[-1]
-        in_ch_feat = dim-self.in_ch_pts#-self.in_ch_views
-        # print('several feature dims',self.in_ch_pts, in_ch_feat, self.in_ch_views) 63 20 3
-        input_pts, input_feats = torch.split(x, [self.in_ch_pts, in_ch_feat], dim=-1)
-        # print('input_pts shape,',input_pts.shape, input_feats.shape, input_views.shape) \
-        # torch.Size([1024, 128, 63]) torch.Size([1024, 128, 20]) torch.Size([1024, 128, 3])
+        if self.use_viewdirs:
+            in_ch_feat = dim-self.in_ch_pts-self.in_ch_views
+            # print('several feature dims',x.shape,self.in_ch_pts, in_ch_feat, self.in_ch_views) #torch.Size([1024, 128, 86]) 63 20 3
+            input_pts, input_feats, input_views = torch.split(x, [self.in_ch_pts, in_ch_feat, self.in_ch_views], dim=-1)
+        else:
+            if self.args.use_viewdirs:
+                in_ch_feat = dim-self.in_ch_pts-self.in_ch_views
+                # print('several feature dims',x.shape,self.in_ch_pts, in_ch_feat, self.in_ch_views) #torch.Size([1024, 128, 86]) 63 20 3
+                input_pts, input_feats, input_views = torch.split(x, [self.in_ch_pts, in_ch_feat, self.in_ch_views], dim=-1)
+            else:
+                in_ch_feat = dim-self.in_ch_pts#-self.in_ch_views
+                # print('several feature dims',self.in_ch_pts, in_ch_feat, self.in_ch_views) #torch.Size([1024, 128, 86]) 63 20 3
+                input_pts, input_feats = torch.split(x, [self.in_ch_pts, in_ch_feat], dim=-1)
         h = input_pts
         bias = self.pts_bias(input_feats)
         for i, l in enumerate(self.pts_linears):
@@ -653,28 +672,46 @@ class Renderer_gs(nn.Module):
             pre_scales = self.scale_linear(h)
             scales = self.scaling_activation(pre_scales)
             rotation = self.rotation_activation(self.rotation_linear(h))
+            if self.use_viewdirs:
+                feature = self.feature_linear(h)
+                h = torch.cat([feature, input_views], -1)
+
+                for i, l in enumerate(self.views_linears_):
+                    h = self.views_linears_[i](h)
+                    h = F.relu(h)
             feature_ds = self.feat_ds_linear(h)
             features_rest = self.feat_rest_linear(h)
             return torch.cat([opacity,scales,rotation,feature_ds,features_rest],-1)
         else:
-            for i in range(len(self.output_liners)-1):
-                h = self.output_liners[i](h)
-                h = F.relu(h)
-            if self.output_dim == 48:
-                h = self.output_liners[-1](h)
-                h = F.relu(h)
+            if self.use_viewdirs:
+                feature = self.feature_linear(h)
+                h = torch.cat([feature, input_views], -1)
+
+                for i, l in enumerate(self.views_linears_):
+                    h = self.views_linears_[i](h)
+                    h = F.relu(h)
                 feature_ds = self.feat_ds_linear(h)
                 features_rest = self.feat_rest_linear(h)
                 return torch.cat([feature_ds,features_rest],-1)
-            elif self.output_dim == 3 or (self.output_dim==1 and self.scale):
-                scales = self.scaling_activation(self.output_liners[-1](h))
-                return scales
-            elif self.output_dim==1:
-                opacity = self.opacity_activation(self.output_liners[-1](h))
-                return opacity
-            elif self.output_dim == 4:
-                rotation = self.rotation_activation(self.output_liners[-1](h))
-                return rotation
+            else:
+                for i in range(len(self.output_liners)-1):
+                    h = self.output_liners[i](h)
+                    h = F.relu(h)
+                if self.output_dim == 48:
+                    h = self.output_liners[-1](h)
+                    h = F.relu(h)
+                    feature_ds = self.feat_ds_linear(h)
+                    features_rest = self.feat_rest_linear(h)
+                    return torch.cat([feature_ds,features_rest],-1)
+                elif self.output_dim == 3 or (self.output_dim==1 and self.scale):
+                    scales = self.scaling_activation(self.output_liners[-1](h))
+                    return scales
+                elif self.output_dim==1:
+                    opacity = self.opacity_activation(self.output_liners[-1](h))
+                    return opacity
+                elif self.output_dim == 4:
+                    rotation = self.rotation_activation(self.output_liners[-1](h))
+                    return rotation
 
 
         ### the output of h can be used to output following pointwise information
@@ -699,7 +736,7 @@ class Renderer_gs(nn.Module):
         # return outputs
 
 class MVSNeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch_pts=3, input_ch_views=3, input_ch_feat=8, skips=[4], net_type='v2', output_dim = None,scale = False):
+    def __init__(self, D=8, W=256, input_ch_pts=3, input_ch_views=3, input_ch_feat=8, skips=[4], net_type='v2', output_dim = None,scale = False,use_viewdirs=False,args=None):
         """
         """
         super(MVSNeRF, self).__init__()
@@ -722,7 +759,7 @@ class MVSNeRF(nn.Module):
         elif 'v3' == net_type:
             self.nerf = Renderer_gs(D=D, W=W,input_ch_feat=input_ch_feat,
                      input_ch=input_ch_pts, output_ch=4, skips=skips,
-                     input_ch_views=input_ch_views, use_viewdirs=True, output_dim = output_dim,scale = scale) 
+                     input_ch_views=input_ch_views, use_viewdirs=use_viewdirs, output_dim = output_dim,scale = scale,args=args) 
 
     def forward_alpha(self, x):
         if self.net_type=='v3':
@@ -761,20 +798,21 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
             if i==1:
                 model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
                         input_ch_pts=input_ch, skips=skips,
-                        input_ch_views=input_ch_views, input_ch_feat=8+args.n_views*4, net_type=args.net_type,output_dim=output_dims[i],scale=True).to(device))
+                        input_ch_views=input_ch_views, input_ch_feat=8+args.n_views*4, net_type=args.net_type,output_dim=output_dims[i],scale=True,use_viewdirs=False,args=args).to(device))
             elif i==3:
+                ## only the fouth component has use_viewdirs
                 model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
                         input_ch_pts=input_ch, skips=skips,
-                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i]).to(device))
+                        input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,output_dim=output_dims[i],use_viewdirs=args.use_viewdirs,args=args).to(device))
             else:
                 model.append(MVSNeRF(D=args.netdepth, W=args.netwidth,
                         input_ch_pts=input_ch, skips=skips,
-                        input_ch_views=input_ch_views, input_ch_feat=8+args.n_views*4, net_type=args.net_type,output_dim=output_dims[i]).to(device))
+                        input_ch_views=input_ch_views, input_ch_feat=8+args.n_views*4, net_type=args.net_type,output_dim=output_dims[i],use_viewdirs=False,args=args).to(device))
             
     else:
         model = MVSNeRF(D=args.netdepth, W=args.netwidth,
                     input_ch_pts=input_ch, skips=skips,
-                    input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type).to(device)
+                    input_ch_views=input_ch_views, input_ch_feat=args.feat_dim, net_type=args.net_type,use_viewdirs=args.use_viewdirs,args=args).to(device)
 
     grad_vars = []
     if args.multi_volume:
@@ -863,11 +901,14 @@ def create_nerf_mvs(args, pts_embedder=True, use_mvs=False, dir_embedder=True):
     os.makedirs(resume_dir, exist_ok=True)
     resume_paths = os.listdir(resume_dir)
     if len(resume_paths) > 0 :
-        resume_path = os.path.join(resume_dir,resume_paths[-1])
+        if 'latest.tar' in resume_paths:
+            resume_path = os.path.join(resume_dir,'latest.tar')
+        else:
+            resume_path = os.path.join(resume_dir,resume_paths[-1])
         resume_ckpt = torch.load(resume_path)
         EncodingNet.load_state_dict(resume_ckpt['network_mvs_state_dict'])
         model.load_state_dict(resume_ckpt['network_fn_state_dict'])
-        print('================Resume from==================',resume_path)
+        print('================Resume from================== step',resume_ckpt['global_step'],resume_path)
         start = resume_ckpt['global_step']
 
     render_kwargs_train = {

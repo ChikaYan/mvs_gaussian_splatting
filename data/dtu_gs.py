@@ -55,7 +55,7 @@ class DTU_gs(Dataset):
         
         # change to random views
         # light_idxs = [3]
-        light_idxs = [3] if ('train' != self.split or self.args.multi_volume) else range(7) ##hanxue
+        light_idxs = [3] if ('train' != self.split) else range(7) ##hanxue
 
         # ##hanxue
         # self.id_list = []
@@ -83,6 +83,10 @@ class DTU_gs(Dataset):
                     for light_idx in light_idxs:
                         self.metas += [(scan, light_idx, [ref_view], src_views)]
                         self.id_list.append([ref_view] + src_views)
+        if self.split!='train':
+            ##### as val set has 1519 views, I reduce it to 152 for faster validation result check
+            self.metas=self.metas[::10]
+            self.id_list=self.id_list[::10]
         #             # metas[0]
         #             # ('scan3', 0, 0, [10, 1, 9, 12, 11, 13, 2, 8, 14, 27])
         #             # metas[1]
@@ -313,7 +317,10 @@ class DTU_gs(Dataset):
                   'FovY':target_FovY[-1],
                   'src_views':src_views,
                   'light_idx':light_idx,
-                  'scan':scan}
+                  'scan':scan,
+                  'target_intrinsics':intrinsic,
+                  'target_w2c':w2c,
+                  'target_c2w':c2w}
         sample['idx'] = idx
         return sample
     # def read_meta(self):

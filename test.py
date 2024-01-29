@@ -441,6 +441,9 @@ class MVSSystem(LightningModule):
         target_projectmatric = target_intrinsics @ target_w2c[:3, :4]
         # rays_o, rays_d = rays[:, 0:3], rays[:, 3:6]
         # print('mask',mask.shape)
+        print(img.shape)
+        imageio.imwrite(f"img_{self.idx:03d}.png", (img.cpu().permute([1,2,0])*255).numpy().astype('uint8'))
+        imageio.imwrite(f"mask_{self.idx:03d}.png", (mask.cpu()*255).numpy().astype('uint8'))
         mask = torch.tensor(mask,device=self.device).reshape(-1)
 
         # print('rays_o',rays_o.shape,rays_d.shape)
@@ -471,6 +474,7 @@ class MVSSystem(LightningModule):
         znear = 0.01
         img = img.cpu()  # (3, H, W)
         H,W = img.shape[-2:]
+        
         world_view_transform = self.getWorld2View2(R, T).transpose(0, 1).to(self.device)#torch.tensor(self.getWorld2View2(R, T)).transpose(0, 1).to(self.device)
         projection_matrix = self.getProjectionMatrix(znear=znear, zfar=zfar, fovX=FovX, fovY=FovY).transpose(0,1).to(self.device)
         full_proj_transform = (world_view_transform.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))).squeeze(0)
@@ -507,6 +511,14 @@ class MVSSystem(LightningModule):
         point_coords = torch.cat((xyz_coarse_sampled,torch.ones(xyz_coarse_sampled.shape[0],1).to(self.device)),dim=1)@target_projectmatric.T
         point_coords = point_coords/point_coords[:,2:]
         point_coords = point_coords[:,:2].type(torch.int)
+        point_coords[:,0]=torch.clip(point_coords[:,0],min=0,max=639)
+        point_coords[:,1]=torch.clip(point_coords[:,1],min=0,max=511)
+        # print(torch.unique(point_coords[:,0]),torch.unique(point_coords[:,1]))
+        coors=np.zeros((512,640,3))
+        for i in range(point_coords.shape[0]):
+            coors[point_coords[i,1],point_coords[i,0],:]=1
+        imageio.imwrite(f"test_mask_{self.idx:03d}.png", (coors*255).astype('uint8'))
+        print('target_intrinsics',target_intrinsics,target_c2w)
         center = [target_intrinsics[0,2], target_intrinsics[1,2]]
         focal = [target_intrinsics[0,0], target_intrinsics[1,1]]
         # print('point_coords[:,0]',torch.max(point_coords[:,0]),torch.min(point_coords[:,0]),torch.max(point_coords[:,1]),torch.min(point_coords[:,1]))

@@ -21,6 +21,9 @@ def get_ray_directions(H, W, focal, center=None):
     """
     grid = create_meshgrid(H, W, normalized_coordinates=False)[0]
     i, j = grid.unbind(-1)
+    # print('i',torch.max(i),torch.min(i))
+    # print('j',torch.max(j))
+    # print(i.shape,j.shape)
     # the direction here is without +0.5 pixel centering as calibration is not so accurate
     # see https://github.com/bmild/nerf/issues/24
     cent = center if center is not None else [W / 2, H / 2]
