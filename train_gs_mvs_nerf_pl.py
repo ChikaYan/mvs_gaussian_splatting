@@ -49,6 +49,7 @@ class MVSSystem(LightningModule):
 
         self.loss = SL1Loss()
         self.lpips_fn = [lpips.LPIPS(net='vgg').eval()]
+        self.mrf_fn = [IDMRFLoss().eval()]
 
         # Create nerf model
         ###hanxue
@@ -226,6 +227,11 @@ class MVSSystem(LightningModule):
         P[2, 3] = -(zfar * znear) / (zfar - znear)
         return P
     
+    def on_train_start(self) -> None:
+        # move lpips and mrf fn
+        self.lpips_fn[0].to(self.device)
+        self.mrf_fn[0].to(self.device)
+    
     def training_step(self, batch, batch_nb):
         if self.global_step%self.args.increaseactivation_step==0:
             self.active_sh_degree=min(self.active_sh_degree+1,3)
@@ -355,8 +361,8 @@ class MVSSystem(LightningModule):
             loss += img_loss
             psnr = mse2psnr2(img_loss.item())
 
-            lpips_loss = 0
-            self.lpips_fn[0].to(self.device)
+            lpips_loss = torch.tensor(0)
+            mrf_loss = torch.tensor(0)
             if self.use_mask:
                 Ll1 = (1.0 - 0.2)*l1_loss(rendered_image.permute(1,2,0).reshape(-1,3)[mask], rgbs_target.permute(1,2,0).reshape(-1,3)[mask])
                 im_mask = mask.reshape([rendered_image.shape[1], rendered_image.shape[2]])[None, ...].repeat([3,1,1]).float()
@@ -366,17 +372,49 @@ class MVSSystem(LightningModule):
                 if self.args.lambda_lpips > 0:
                     centered_masked_rendered_image = (masked_rendered_image - 0.5) * 2
                     centered_masked_rgbs_target = (masked_rgbs_target.type_as(centered_masked_rendered_image) - 0.5) * 2
-                    lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).squeeze()
+                    lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).mean()
+                if self.args.lambda_mrf > 0:
+                    mrf_loss = self.mrf_fn[0](masked_rendered_image.unsqueeze(0), masked_rgbs_target.unsqueeze(0)).mean()
+                    
             else:
                 Ll1 = (1.0 - 0.2)*l1_loss(rendered_image, rgbs_target)
                 ssim_loss = (1.0 - ssim(rendered_image, rgbs_target))
                 if self.args.lambda_lpips > 0:
                     centered_masked_rendered_image = (rendered_image - 0.5) * 2
                     centered_masked_rgbs_target = (rgbs_target - 0.5) * 2
-                    lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).squeeze()
+                    lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).mean()
+                if self.args.lambda_mrf > 0:
+                    mrf_loss = self.mrf_fn[0](rendered_image.unsqueeze(0), rgbs_target.unsqueeze(0)).mean()
+
             loss += Ll1
             loss += self.args.lambda_dssim * ssim_loss
             loss += self.args.lambda_lpips * lpips_loss
+
+
+
+            # if self.use_mask:
+            #     Ll1 = (1.0 - 0.2)*l1_loss(rendered_image.permute(1,2,0).reshape(-1,3)[mask], rgbs_target.permute(1,2,0).reshape(-1,3)[mask])
+            #     im_mask = mask.reshape([rendered_image.shape[1], rendered_image.shape[2]])[None, ...].repeat([3,1,1]).float()
+            #     masked_rendered_image = rendered_image * im_mask
+            #     masked_rgbs_target = rgbs_target * im_mask
+            # else:
+            #     Ll1 = (1.0 - 0.2)*l1_loss(rendered_image, rgbs_target)
+            #     ssim_loss = (1.0 - ssim(rendered_image, rgbs_target))
+            #     masked_rendered_image = rendered_image
+            #     masked_rgbs_target = rgbs_target
+
+            # ssim_loss = (1.0 - ssim(masked_rendered_image, masked_rgbs_target))
+
+            # if self.args.lambda_lpips > 0:
+            #     centered_masked_rendered_image = (masked_rendered_image - 0.5) * 2
+            #     centered_masked_rgbs_target = (masked_rgbs_target.type_as(centered_masked_rendered_image) - 0.5) * 2
+            #     lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).mean()
+
+            # if self.args.lambda_mrf > 0:
+            #     pass
+            #     # mrf_loss = self.mrf_fn[0](masked_rendered_image.unsqueeze(0), masked_rgbs_target.unsqueeze(0)).mean()
+
+
 
             if self.args.withpointrgbloss:
                 point_rgb = init_pointclouds[:,3:].to(self.device)
@@ -393,8 +431,8 @@ class MVSSystem(LightningModule):
                     self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
                     self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
                 self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
-                if self.args.lambda_lpips > 0:
-                    self.log('train/lpips_loss', lpips_loss.item(), prog_bar=False)
+                self.log('train/lpips_loss', lpips_loss.item(), prog_bar=False)
+                self.log('train/mrf_loss', mrf_loss.item(), prog_bar=False)
             if self.start%len(self.train_dataloader())==0:
                 print('train/PSNR',psnr.item())
             if self.start%10000==0:

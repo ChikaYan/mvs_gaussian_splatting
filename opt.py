@@ -81,6 +81,7 @@ def config_parser(cmd=None):
     parser.add_argument("--num_gpus", type=int, default=-1)
     parser.add_argument("--lambda_dssim", type=float, default=0)
     parser.add_argument("--lambda_lpips", type=float, default=0)
+    parser.add_argument("--lambda_mrf", type=float, default=0)
     parser.add_argument("--pt_folder", type=str, default='Pointclouds50',
                         help='where to find point cloud for querying')
     parser.add_argument("--pt_downsample", type=int, default=1,
