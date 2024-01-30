@@ -10,6 +10,8 @@ from scipy.spatial.transform import Rotation as R
 
 from torch.autograd import Variable
 from math import exp
+import trimesh
+
 # Misc
 img2mse = lambda x, y : torch.mean((x - y) ** 2)
 mse2psnr = lambda x : -10. * torch.log(x) / torch.log(torch.Tensor([10.]))
@@ -26,6 +28,15 @@ def init_log(log, keys):
     for key in keys:
         log[key] = torch.tensor([0.0], dtype=float)
     return log
+
+def load_pointcloud(pt_path):
+    if pt_path.endswith('.npy'):
+        return np.load(pt_path)[:,:3]
+    elif pt_path.endswith('.ply'):
+        mesh = trimesh.load_mesh(pt_path)
+        return mesh.vertices
+    
+
 
 
 

@@ -63,3 +63,19 @@ conda activate mvsnerf1
 
 
 python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname dtu_gs_withmask_multiscale0.005_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4_numview6_32   --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 5000 --net_type v3 --netchunk 100000 --n_views 6 --volume_feat_outputdim 32
+
+
+
+
+# example command to train with transmvsnet pts
+python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu \
+    --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp \
+    --expname pointclouds5_transmvs_photo_ply   \
+    --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  \
+    --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 5000 --net_type v3 \
+    --netchunk 100000 --n_views 6 --volume_feat_outputdim 32 \
+    --pt_folder pointclouds5_transmvs_photo_ply --pt_downsample 2
+
+
+
+

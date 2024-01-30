@@ -292,8 +292,9 @@ class MVSSystem(LightningModule):
         #                 lindisp=args.use_disp, perturb=args.perturb) ##provide the xyz_coordinates in world system
         
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'Pointclouds10/{scan}_pointclouds.npy')
-        init_pointclouds = np.load(pc_path)
+        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' else 'ply'
+        pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'{self.args.pt_folder}/{scan}_pointclouds.{ext}')
+        init_pointclouds = load_pointcloud(pc_path)[::self.args.pt_downsample]
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
         xyz_coarse_sampled = init_pointclouds[:,:3].to(self.device)
@@ -461,8 +462,9 @@ class MVSSystem(LightningModule):
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        pc_path = os.path.join(self.val_dataset.pointcloud_dir,f'Pointclouds10/{scan}_pointclouds.npy')
-        init_pointclouds = np.load(pc_path)
+        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' else 'ply'
+        pc_path = os.path.join(self.val_dataset.pointcloud_dir,f'{self.args.pt_folder}/{scan}_pointclouds.{ext}')
+        init_pointclouds = load_pointcloud(pc_path)[::self.args.pt_downsample]
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
         xyz_coarse_sampled = init_pointclouds[:,:3].to(self.device)

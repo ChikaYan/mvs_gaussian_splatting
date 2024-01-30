@@ -109,6 +109,10 @@ def config_parser(cmd=None):
                         help='log2 of max freq for positional encoding (2D direction)')
     parser.add_argument("--volume_feat_outputdim", type=int, default=8,
                         help='log2 of max freq for positional encoding (2D direction)')
+    parser.add_argument("--pt_folder", type=str, default='Pointclouds50',
+                        help='where to find point cloud for querying')
+    parser.add_argument("--pt_downsample", type=int, default=1,
+                        help='further downsample the loaded pts')
 
 
 
