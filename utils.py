@@ -31,12 +31,10 @@ def init_log(log, keys):
 
 def load_pointcloud(pt_path):
     if pt_path.endswith('.npy'):
-        return np.load(pt_path)[:,:3]
+        return np.load(pt_path)
     elif pt_path.endswith('.ply'):
         mesh = trimesh.load_mesh(pt_path)
-        return mesh.vertices
-    
-
+        return np.concatenate([mesh.vertices, mesh.colors], axis=-1)
 
 
 
