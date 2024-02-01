@@ -79,6 +79,14 @@ def config_parser(cmd=None):
                         help='specific weights npy file to reload for coarse network')
     parser.add_argument("--depth_res", type=int, default=128)
     parser.add_argument("--num_gpus", type=int, default=-1)
+    parser.add_argument("--lambda_dssim", type=float, default=0)
+    parser.add_argument("--lambda_lpips", type=float, default=0)
+    parser.add_argument("--lambda_mrf", type=float, default=0)
+    parser.add_argument("--pt_folder", type=str, default='Pointclouds50',
+                        help='where to find point cloud for querying')
+    parser.add_argument("--pt_downsample", type=int, default=1,
+                        help='further downsample the loaded pts')
+
 
     # rendering options
     parser.add_argument("--N_samples", type=int, default=128,
@@ -111,6 +119,7 @@ def config_parser(cmd=None):
                         help='log2 of max freq for positional encoding (2D direction)')
     parser.add_argument("--nosave", action='store_true',
                         help='whether save images during validation')
+
 
 
 

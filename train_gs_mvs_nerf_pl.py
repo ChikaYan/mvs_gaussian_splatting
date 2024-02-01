@@ -17,6 +17,10 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer, loggers
 import yaml
 from pathlib import Path
+import lpips
+
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import lpips
 lpips_vgg = lpips.LPIPS(net="vgg").eval().to(device)
@@ -48,6 +52,8 @@ class MVSSystem(LightningModule):
         self.savedir = args.savedir
 
         self.loss = SL1Loss()
+        self.lpips_fn = [lpips.LPIPS(net='vgg').eval()]
+        self.mrf_fn = [IDMRFLoss().eval()]
 
         # Create nerf model
         ###hanxue
@@ -237,6 +243,11 @@ class MVSSystem(LightningModule):
         P[2, 3] = -(zfar * znear) / (zfar - znear)
         return P
     
+    def on_train_start(self) -> None:
+        # move lpips and mrf fn
+        self.lpips_fn[0].to(self.device)
+        self.mrf_fn[0].to(self.device)
+    
     def training_step(self, batch, batch_nb):
         if self.global_step%self.args.increaseactivation_step==0:
             self.active_sh_degree=min(self.active_sh_degree+1,3)
@@ -311,8 +322,9 @@ class MVSSystem(LightningModule):
         #                 lindisp=args.use_disp, perturb=args.perturb) ##provide the xyz_coordinates in world system
         
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'Pointclouds10/{scan}_pointclouds.npy')
-        init_pointclouds = np.load(pc_path)
+        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' else 'ply'
+        pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'{self.args.pt_folder}/{scan}_pointclouds.{ext}')
+        init_pointclouds = load_pointcloud(pc_path)[::self.args.pt_downsample]
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
         xyz_coarse_sampled = init_pointclouds[:,:3].to(self.device)
@@ -375,7 +387,6 @@ class MVSSystem(LightningModule):
         # pdb.set_trace()
         
         # print('rgbs_target shape,',rgbs_target.shape, rendered_image.shape)
-        lambda_dssim=0.2
         if self.args.with_rgb_loss:
             if self.use_mask:
                 img_loss = img2mse(rendered_image.permute(1,2,0).reshape(-1,3)[mask], rgbs_target.permute(1,2,0).reshape(-1,3)[mask])
@@ -383,20 +394,67 @@ class MVSSystem(LightningModule):
                 img_loss = img2mse(rendered_image,rgbs_target)
             loss += img_loss
             psnr = mse2psnr2(img_loss.item())
+
+            lpips_loss = torch.tensor(0)
+            mrf_loss = torch.tensor(0)
             if self.use_mask:
-                Ll1 = (1.0 - lambda_dssim)*l1_loss(rendered_image.permute(1,2,0).reshape(-1,3)[mask], rgbs_target.permute(1,2,0).reshape(-1,3)[mask])
+                Ll1 = (1.0 - 0.2)*l1_loss(rendered_image.permute(1,2,0).reshape(-1,3)[mask], rgbs_target.permute(1,2,0).reshape(-1,3)[mask])
+                im_mask = mask.reshape([rendered_image.shape[1], rendered_image.shape[2]])[None, ...].repeat([3,1,1]).float()
+                masked_rendered_image = rendered_image * im_mask
+                masked_rgbs_target = rgbs_target * im_mask
+                ssim_loss = (1.0 - ssim(masked_rendered_image, masked_rgbs_target))
+                if self.args.lambda_lpips > 0:
+                    centered_masked_rendered_image = (masked_rendered_image - 0.5) * 2
+                    centered_masked_rgbs_target = (masked_rgbs_target.type_as(centered_masked_rendered_image) - 0.5) * 2
+                    lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).mean()
+                if self.args.lambda_mrf > 0:
+                    mrf_loss = self.mrf_fn[0](masked_rendered_image.unsqueeze(0), masked_rgbs_target.unsqueeze(0)).mean()
+                    
             else:
-                Ll1 = (1.0 - lambda_dssim)*l1_loss(rendered_image, rgbs_target)
+                Ll1 = (1.0 - 0.2)*l1_loss(rendered_image, rgbs_target)
+                ssim_loss = (1.0 - ssim(rendered_image, rgbs_target))
+                if self.args.lambda_lpips > 0:
+                    centered_masked_rendered_image = (rendered_image - 0.5) * 2
+                    centered_masked_rgbs_target = (rgbs_target - 0.5) * 2
+                    lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).mean()
+                if self.args.lambda_mrf > 0:
+                    mrf_loss = self.mrf_fn[0](rendered_image.unsqueeze(0), rgbs_target.unsqueeze(0)).mean()
+
             loss += Ll1
-            if not self.use_mask:
-                ssim_loss = lambda_dssim * (1.0 - ssim(rendered_image, rgbs_target))
-                loss += ssim_loss
+            loss += self.args.lambda_dssim * ssim_loss
+            loss += self.args.lambda_lpips * lpips_loss
+
+
+
+            # if self.use_mask:
+            #     Ll1 = (1.0 - 0.2)*l1_loss(rendered_image.permute(1,2,0).reshape(-1,3)[mask], rgbs_target.permute(1,2,0).reshape(-1,3)[mask])
+            #     im_mask = mask.reshape([rendered_image.shape[1], rendered_image.shape[2]])[None, ...].repeat([3,1,1]).float()
+            #     masked_rendered_image = rendered_image * im_mask
+            #     masked_rgbs_target = rgbs_target * im_mask
+            # else:
+            #     Ll1 = (1.0 - 0.2)*l1_loss(rendered_image, rgbs_target)
+            #     ssim_loss = (1.0 - ssim(rendered_image, rgbs_target))
+            #     masked_rendered_image = rendered_image
+            #     masked_rgbs_target = rgbs_target
+
+            # ssim_loss = (1.0 - ssim(masked_rendered_image, masked_rgbs_target))
+
+            # if self.args.lambda_lpips > 0:
+            #     centered_masked_rendered_image = (masked_rendered_image - 0.5) * 2
+            #     centered_masked_rgbs_target = (masked_rgbs_target.type_as(centered_masked_rendered_image) - 0.5) * 2
+            #     lpips_loss = self.lpips_fn[0](centered_masked_rendered_image.unsqueeze(0), centered_masked_rgbs_target.unsqueeze(0)).mean()
+
+            # if self.args.lambda_mrf > 0:
+            #     pass
+            #     # mrf_loss = self.mrf_fn[0](masked_rendered_image.unsqueeze(0), masked_rgbs_target.unsqueeze(0)).mean()
+
+
 
             if self.args.withpointrgbloss:
                 point_rgb = init_pointclouds[:,3:].to(self.device)
                 point_rbg_loss = l2_loss(shs[:,0,:],point_rgb)
                 loss+=point_rbg_loss
-                point_Ll1 = (1.0 - lambda_dssim)*l1_loss(shs[:,0,:], point_rgb)
+                point_Ll1 = (1.0 - 0.2)*l1_loss(shs[:,0,:], point_rgb)
                 loss += point_Ll1
             with torch.no_grad():
                 self.log('train/loss', loss, prog_bar=True)
@@ -406,7 +464,9 @@ class MVSSystem(LightningModule):
                 if self.args.withpointrgbloss:
                     self.log('train/pointL2', point_rbg_loss.item(), prog_bar=False)
                     self.log('train/pointL1', point_Ll1.item(), prog_bar=False)
-                # self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
+                self.log('train/ssim_loss', ssim_loss.item(), prog_bar=False)
+                self.log('train/lpips_loss', lpips_loss.item(), prog_bar=False)
+                self.log('train/mrf_loss', mrf_loss.item(), prog_bar=False)
             if self.start%len(self.train_dataloader())==0:
                 print('train/PSNR',psnr.item())
             if self.start%10000==0:
@@ -498,8 +558,9 @@ class MVSSystem(LightningModule):
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        pc_path = os.path.join(self.val_dataset.pointcloud_dir,f'Pointclouds10/{scan}_pointclouds.npy')
-        init_pointclouds = np.load(pc_path)
+        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' else 'ply'
+        pc_path = os.path.join(self.val_dataset.pointcloud_dir,f'{self.args.pt_folder}/{scan}_pointclouds.{ext}')
+        init_pointclouds = load_pointcloud(pc_path)[::self.args.pt_downsample]
         init_pointclouds = torch.tensor(init_pointclouds).float()
         # init_pointclouds = self.init_pointclouds
         xyz_coarse_sampled = init_pointclouds[:,:3].to(self.device)
