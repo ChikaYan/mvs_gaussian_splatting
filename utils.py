@@ -12,6 +12,51 @@ from math import exp
 import trimesh
 import torchvision.models as models
 from functools import reduce
+from plyfile import PlyData, PlyElement
+from pathlib import Path
+
+
+
+def gs_save_ply(xyz, features_dc, features_rest, opacity, scaling, rotation, path):
+    # mkdir_p(os.path.dirname(path))
+    Path(path).parent.mkdir(exist_ok=True, parents=True)
+
+    # apply reverted activations
+    opacity = torch.log(opacity/(1-opacity))
+    scaling = torch.log(scaling)
+
+    xyz = xyz.detach().cpu().numpy()
+    normals = np.zeros_like(xyz)
+    f_dc = features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+    f_rest = features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+    f_rest = np.zeros_like(f_rest)
+    opacities = opacity.detach().cpu().numpy()
+    scale = scaling.detach().cpu().numpy()
+    rotation = rotation.detach().cpu().numpy()
+
+
+    l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
+    # All channels except the 3 DC
+    for i in range(features_dc.shape[1]*features_dc.shape[2]):
+        l.append('f_dc_{}'.format(i))
+    for i in range(features_rest.shape[1]*features_rest.shape[2]):
+        l.append('f_rest_{}'.format(i))
+    l.append('opacity')
+    for i in range(scaling.shape[1]):
+        l.append('scale_{}'.format(i))
+    for i in range(rotation.shape[1]):
+        l.append('rot_{}'.format(i))
+
+    dtype_full = [(attribute, 'f4') for attribute in l]
+
+    elements = np.empty(xyz.shape[0], dtype=dtype_full)
+    attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+    elements[:] = list(map(tuple, attributes))
+    el = PlyElement.describe(elements, 'vertex')
+    PlyData([el]).write(path)
+
+    # import pdb; pdb.set_trace()
+
 
 
 # Misc
