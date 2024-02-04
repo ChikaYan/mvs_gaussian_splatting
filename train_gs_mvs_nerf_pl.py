@@ -322,7 +322,7 @@ class MVSSystem(LightningModule):
         #                 lindisp=args.use_disp, perturb=args.perturb) ##provide the xyz_coordinates in world system
         
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' else 'ply'
+        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' or self.args.pt_folder == 'Pointclouds10_scale0.05' else 'ply'
         pc_path = os.path.join(self.train_dataset.pointcloud_dir,f'{self.args.pt_folder}/{scan}_pointclouds.{ext}')
         init_pointclouds = load_pointcloud(pc_path)[::self.args.pt_downsample]
         init_pointclouds = torch.tensor(init_pointclouds).float()
@@ -477,10 +477,10 @@ class MVSSystem(LightningModule):
                 img = rgbs_target.permute([1,2,0])#.cpu()
                 #depth_r = torch.cat(depth_preds).reshape(H, W)
                 img_err_abs = (rgbs - img).abs()
-                img_vis = torch.stack((img, rgbs, img_err_abs*5)).permute(0,3,1,2)
+                # img_vis = torch.stack((img, rgbs, img_err_abs*5,im_mask)).permute(0,3,1,2)
                 os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
                 # print(img.device,type(img),rgbs.device,type(rgbs),img_err_abs.device,type(img_err_abs))
-                img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).detach().cpu().numpy() #depth_r.permute(1,2,0)
+                img_vis = torch.cat((img,rgbs,img_err_abs*10,im_mask.permute([1,2,0])),dim=1).detach().cpu().numpy() #depth_r.permute(1,2,0)
                 img_dir = Path(f'{self.savedir}/{self.args.expname}/train_rgb')
                 img_dir.mkdir(exist_ok=True, parents=True)
                 imageio.imwrite(str(img_dir / f"{self.start:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
@@ -624,6 +624,7 @@ class MVSSystem(LightningModule):
             img = img.permute([1,2,0])
             #depth_r = torch.cat(depth_preds).reshape(H, W)
             img_err_abs = (rgbs - img).abs()
+            im_mask = mask.reshape([rgbs.shape[0], rgbs.shape[1]])[...,None].repeat([1,1,3]).float()
             if self.use_mask:
                 img_loss = img2mse(rgbs.reshape(-1,3)[mask], img.reshape(-1,3)[mask])
                 log['val_psnr_all']  = mse2psnr2(img_loss)
@@ -631,11 +632,11 @@ class MVSSystem(LightningModule):
                 log['val_psnr_all'] = mse2psnr(torch.mean(img_err_abs ** 2))
             
 
-            img_vis = torch.stack((img, rgbs, img_err_abs.cpu()*5)).permute(0,3,1,2)
+            # img_vis = torch.stack((img, rgbs, img_err_abs.cpu()*5,im_mask)).permute(0,3,1,2)
             # self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.start)
             os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
 
-            img_vis = torch.cat((img,rgbs,img_err_abs*10,),dim=1).numpy() #depth_r.permute(1,2,0)
+            img_vis = torch.cat((img,rgbs,img_err_abs*10,im_mask.permute([1,2,0])),dim=1).numpy() #depth_r.permute(1,2,0)
             img_dir = Path(f'{self.savedir}/{self.args.expname}/val_rgb')
             if not args.nosave:
                 if args.val_only:

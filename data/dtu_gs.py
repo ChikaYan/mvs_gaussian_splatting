@@ -28,7 +28,7 @@ class DTU_gs(Dataset):
         self.img_wh = (int(640*downsample),int(512*downsample))
         print(f'==> image down scale: {downsample}')
         self.downsample = downsample
-        self.scale_factor = 1.0 / 200
+        self.scale_factor = self.args.scale_factor
         self.max_len = max_len
         assert int(640*downsample)%32 == 0, \
             f'image width is {int(640*downsample)}, it should be divisible by 32, you may need to modify the imgScale'

@@ -57,24 +57,26 @@ conda activate mvsnerf1
 #python train_mvs_nerf_pl.py --dataset_name dtu --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname dtu_9_wdepth_wviewdir --num_epochs 10 --use_viewdirs --batch_size 1024  --with_depth --n_views 9 #--volume_feat_outputdim 32
 #python train_mvs_nerf_pl.py --dataset_name dtu --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname dtu_9_32_wdepth_wviewdirs --num_epochs 10 --batch_size 1024  --with_depth --n_views 9 --volume_feat_outputdim 32 --use_viewdirs
 
-python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname 7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4_numview6_8   --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 12 --net_type v3 --netchunk 100000 --n_views 6
+#python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname 7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4_numview6_8   --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 12 --net_type v3 --netchunk 100000 --n_views 6
 #python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname 7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4   --decay_scale 0.003 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000
 #python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname 7lc_dtu_gs_withmask_multiscale0.002_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4   --decay_scale 0.002 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000
 #python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname wviewdirs_7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4   --decay_scale 0.003 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000  --use_viewdirs
 #python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname wviewdirs_7lc_dtu_gs_withmask_multiscale0.002_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4   --decay_scale 0.002 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000  --use_viewdirs
+#python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname dtu_gs_withmask_multiscale0.005_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4_numview6_32   --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 5000 --net_type v3 --netchunk 100000 --n_views 6 --volume_feat_outputdim 32
 
 
-
-
+#python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname wviewdirs_7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-3   --decay_scale 0.003 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000  --use_viewdirs
+# python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname wviewdirs_7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4_256   --decay_scale 0.003 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000  --use_viewdirs --depth_res 256
+python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp --expname wviewdirs_7lc_dtu_gs_withmask_multiscale0.003_point10_randomviews_nopointloss_sh0multi_volume_lr1e-4_256_scale0.05   --decay_scale 0.003 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --ckpt ./ckpts/mvsnerf-v0.tar --N_vis 12 --net_type v3 --netchunk 100000  --use_viewdirs --depth_res 256 --pt_folder Pointclouds10_scale0.05
 
 # example command to train with transmvsnet pts
-python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu \
-    --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp \
-    --expname pointclouds5_transmvs_photo_ply   \
-    --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  \
-    --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 5000 --net_type v3 \
-    --netchunk 100000 --n_views 6 --volume_feat_outputdim 32 \
-    --pt_folder pointclouds5_transmvs_photo_ply --pt_downsample 2
+#python train_gs_mvs_nerf_pl.py --dataset_name dtu_gs --datadir /rds/project/rds-JDeuXlFW9KE/data/dtu \
+#    --savedir /rds/project/rds-JDeuXlFW9KE/hanxue_project/mvsnerf_exp \
+#    --expname pointclouds5_transmvs_photo_ply   \
+#    --decay_scale 0.005 --increaseactivation_step 30000000 --num_epochs 12  --multi_volume --lrate 0.0001  \
+#    --imgScale_test 1.0   --with_rgb_loss  --batch_size 1 --pad 24 --N_vis 5000 --net_type v3 \
+#    --netchunk 100000 --n_views 6 --volume_feat_outputdim 32 \
+#    --pt_folder pointclouds5_transmvs_photo_ply --pt_downsample 2
 
 
 
