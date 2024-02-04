@@ -488,7 +488,7 @@ class MVSSystem(LightningModule):
         return  {'loss':loss}
 
 
-    def validation_step(self, batch, batch_nb):
+    def validation_step(self, batch, batch_idx):
         # if self.global_rank == 0:
         #     import pdb; pdb.set_trace()
 
@@ -643,6 +643,16 @@ class MVSSystem(LightningModule):
                     os.makedirs(f'{self.savedir}/{self.args.expname}/val_only',exist_ok=True)
                     val_rgb_path = f'{self.savedir}/{self.args.expname}/val_only/{self.global_step:08d}_{self.idx:03d}.png'
                     imageio.imwrite(val_rgb_path,(img_vis*255).astype('uint8'))
+
+                    # log ply
+                    if batch_idx == 0:
+                        feature_ds, feature_rest = shs[:,:1], shs[:,1:]
+                        src_views = torch.stack(pair_idx).cpu().numpy()[:,0].tolist()
+                        downsample_rate = 4
+                        # import pdb; pdb.set_trace()
+                        gs_save_ply(
+                            means3D[::downsample_rate,...], feature_ds[::downsample_rate,...], feature_rest[::downsample_rate,...], opacity[::downsample_rate,...], scales[::downsample_rate,...], rotations[::downsample_rate,...],
+                            f"{self.savedir}/{self.args.expname}/val_only_ply/{scan}_source_{src_views}.ply")
                 else:
                     img_dir.mkdir(exist_ok=True, parents=True)
                     imageio.imwrite(str(img_dir / f"{self.start:08d}_{batch['idx'].item():02d}.png"), (img_vis*255).astype('uint8'))
