@@ -223,7 +223,7 @@ class DTU_gs(Dataset):
         return 2*math.atan(pixels/(2*focal))
     
     def __len__(self):
-        return len(self.metas) if self.max_len <= 0 else self.max_len
+        return len(self.metas) if self.max_len <= 0 else min(self.max_len,len(self.metas))
     
     def __getitem__(self, idx):
         idx = idx%self.__len__()
