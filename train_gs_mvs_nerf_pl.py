@@ -558,7 +558,7 @@ class MVSSystem(LightningModule):
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
         # xyz_coarse_sampled = self.train_dataset.init_pointclouds[:,:3].to(torch.device('cuda'))
-        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' else 'ply'
+        ext = 'npy' if self.args.pt_folder == 'Pointclouds10' or self.args.pt_folder == 'Pointclouds50' or self.args.pt_folder == 'Pointclouds10_scale0.05' else 'ply'
         pc_path = os.path.join(self.val_dataset.pointcloud_dir,f'{self.args.pt_folder}/{scan}_pointclouds.{ext}')
         init_pointclouds = load_pointcloud(pc_path)[::self.args.pt_downsample]
         init_pointclouds = torch.tensor(init_pointclouds).float()
@@ -635,8 +635,8 @@ class MVSSystem(LightningModule):
             # img_vis = torch.stack((img, rgbs, img_err_abs.cpu()*5,im_mask)).permute(0,3,1,2)
             # self.logger.experiment.add_images('val/rgb_pred_err', img_vis, self.start)
             os.makedirs(f'{self.savedir}/{self.args.expname}/{self.args.expname}/',exist_ok=True)
-
-            img_vis = torch.cat((img,rgbs,img_err_abs*10,im_mask.permute([1,2,0])),dim=1).numpy() #depth_r.permute(1,2,0)
+            # print('im_mask',img.shape, rgbs.shape, im_mask.shape)
+            img_vis = torch.cat((img,rgbs,img_err_abs*10,im_mask.cpu()),dim=1).numpy() #depth_r.permute(1,2,0)
             img_dir = Path(f'{self.savedir}/{self.args.expname}/val_rgb')
             if not args.nosave:
                 if args.val_only:

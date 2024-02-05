@@ -49,7 +49,9 @@ class DTU_gs(Dataset):
         # self.scans = ['scan114']
         with open(f'configs/lists/dtu_{self.split}_all.txt') as f:
             self.scans = [line.rstrip() for line in f.readlines()] ##hanxue
-
+        
+        if self.args.single_scene:
+            self.scans = self.scans[0:1]
         # light conditions 0-6 for training
         # light condition 3 for testing (the brightest?)
         
@@ -224,6 +226,7 @@ class DTU_gs(Dataset):
         return len(self.metas) if self.max_len <= 0 else self.max_len
     
     def __getitem__(self, idx):
+        idx = idx%self.__len__()
         w, h = self.img_wh
         sample = {}
         scan, light_idx, target_view, src_views = self.metas[idx]
