@@ -369,16 +369,24 @@ class MVSSystem(LightningModule):
             rotations[:,0]=1
         means3D = xyz_coarse_sampled
         means2D = torch.zeros_like(means3D, dtype=means3D.dtype, device=self.device) + 0
+
+        if self.args.use_precomp_color:
+            colors_precomp = shs[:,0,:]
+            pass_shs = None
+        else:
+            colors_precomp = None
+            pass_shs = shs
         
         rendered_image, radii = rasterizer(
             means3D = means3D,
             means2D = means2D,
-            shs = shs,
-            colors_precomp = None,
+            shs = pass_shs,
+            colors_precomp = colors_precomp,
             opacities = opacity,
             scales = scales,
             rotations = rotations,
-            cov3D_precomp = None) #[3,H,W]
+            cov3D_precomp = None)
+
         # if self.start%1000==0:
         #     torchvision.utils.save_image(rendered_image, f'{self.savedir}/{self.args.expname}/train_{self.start:05d}' + ".png")
         #     torchvision.utils.save_image(rgbs_target, f'{self.savedir}/{self.args.expname}/traingt_{self.start:05d}' + ".png")
@@ -603,11 +611,19 @@ class MVSSystem(LightningModule):
                 rotations = torch.zeros_like(rotations,device=self.device)
                 rotations[:,0]=1
                 # print('scales,rotations',scales.shape,rotations.shape)
+                
+            if self.args.use_precomp_color:
+                colors_precomp = shs[:,0,:]
+                pass_shs = None
+            else:
+                colors_precomp = None
+                pass_shs = shs
+            
             rgbs, radii = rasterizer(
                 means3D = means3D,
                 means2D = means2D,
-                shs = shs,
-                colors_precomp = None,
+                shs = pass_shs,
+                colors_precomp = colors_precomp,
                 opacities = opacity,
                 scales = scales,
                 rotations = rotations,
