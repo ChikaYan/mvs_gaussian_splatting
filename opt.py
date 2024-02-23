@@ -121,6 +121,8 @@ def config_parser(cmd=None):
                         help='whether save images during validation')
     parser.add_argument("--scale_factor", type=float, default=0.005,
                         help='model learning rate')
+    parser.add_argument("--use_precomp_color", default=False, action="store_true",
+                        help='use precomputed color instead of sh (disabling sh)')
 
 
 
